@@ -12,12 +12,15 @@ export function Port({
   id,
   label,
   leftPct = 50,
+  size,
 }: {
   nodeId: string
   kind: 'in' | 'out'
   id: string
   label: string
   leftPct?: number
+  /** Diameter in px (default 12 from CSS); group ports are bigger so they can be grabbed zoomed out. */
+  size?: number
 }) {
   const setPortPopover = useCanvasStore((s) => s.setPortPopover)
   const isInput = kind === 'in'
@@ -28,7 +31,7 @@ export function Port({
       id={id}
       className={isInput ? 'port port-in' : 'port port-out'}
       title={`${isInput ? 'input' : 'output'}: ${label} — click for shape`}
-      style={{ left: `${leftPct}%` }}
+      style={{ left: `${leftPct}%`, ...(size ? { width: size, height: size, borderWidth: Math.max(2, size / 6) } : {}) }}
       onClick={(e) => {
         e.stopPropagation()
         setPortPopover({ nodeId, portId: id, kind, x: e.clientX, y: e.clientY })

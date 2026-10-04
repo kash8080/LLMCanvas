@@ -1,15 +1,19 @@
 // Pure (no React) save/load helpers: document format, validation, localStorage.
-import { isNodeKind, type AppEdge, type AppNode } from '../canvas/types'
+import { GROUP_MODES, isNodeKind, type AppEdge, type AppNode } from '../canvas/types'
 import { DEFAULT_HYPERPARAMS, FLOAT_DTYPES, HYPERPARAM_INFO } from '../engine/hyperparams'
 import type { Hyperparams } from '../engine/types'
+import { isGroupType } from '../nodes/groups'
 import { getNodeDef } from '../nodes/registry'
 
 export const STORAGE_KEY = 'llm-canvas:v1'
-/** v1 = Phase 1 (placeholder parts, no hyperparams). v2 = Phase 2 (registry parts + hyperparams). */
-export const DOC_VERSION = 2
+/**
+ * v1 = Phase 1 (placeholder parts, no hyperparams). v2 = Phase 2 (registry parts + hyperparams, flat).
+ * v3 = Phase 3 (group frames; children carry parentId and come after their parent).
+ */
+export const DOC_VERSION = 3
 
-/** A saved node: only the fields worth persisting (no selection / measured state). */
-export type SavedNode = Pick<AppNode, 'id' | 'type' | 'position' | 'data' | 'width' | 'height'>
+/** A saved node: only the fields worth persisting (no selection / measured / hidden state). */
+export type SavedNode = Pick<AppNode, 'id' | 'type' | 'position' | 'data' | 'width' | 'height' | 'parentId' | 'extent'>
 export type SavedEdge = Pick<AppEdge, 'id' | 'source' | 'target' | 'sourceHandle' | 'targetHandle'>
 
 export interface CanvasDocument {
@@ -25,13 +29,15 @@ export function toDocument(nodes: AppNode[], edges: AppEdge[], hyperparams: Hype
     app: 'llm-canvas',
     version: DOC_VERSION,
     hyperparams: { ...hyperparams },
-    nodes: nodes.map(({ id, type, position, data, width, height }) => ({
+    nodes: nodes.map(({ id, type, position, data, width, height, parentId, extent }) => ({
       id,
       type,
       position: { x: position.x, y: position.y },
       data,
       ...(width != null ? { width } : {}),
       ...(height != null ? { height } : {}),
+      ...(parentId ? { parentId } : {}),
+      ...(extent === 'parent' ? { extent } : {}),
     })) as SavedNode[],
     edges: edges.map(({ id, source, target, sourceHandle, targetHandle }) => ({
       id,
@@ -63,6 +69,7 @@ export function parseDocument(raw: unknown): CanvasDocument {
   if (!Array.isArray(raw.nodes) || !Array.isArray(raw.edges)) throw new Error('File is missing nodes/edges.')
 
   const ids = new Set<string>()
+  const groupIds = new Set<string>()
   for (const n of raw.nodes) {
     if (!isObj(n) || !isStr(n.id)) throw new Error('A node is missing its id.')
     if (!isNodeKind(n.type)) throw new Error(`Unknown node type "${String(n.type)}".`)
@@ -74,6 +81,16 @@ export function parseDocument(raw: unknown): CanvasDocument {
         throw new Error(`Node "${n.id}" has an unknown part type "${String(n.data.partType)}".`)
       if (!isObj(n.data.params)) throw new Error(`Node "${n.id}" has no params.`)
     }
+    if (n.type === 'group') {
+      if (!isGroupType(n.data.groupType)) throw new Error(`Node "${n.id}" has an unknown group type "${String(n.data.groupType)}".`)
+      if (!GROUP_MODES.includes(n.data.mode as never)) throw new Error(`Node "${n.id}" has an invalid mode.`)
+      if (!isNum(n.width) || !isNum(n.height)) throw new Error(`Group "${n.id}" has no size.`)
+      groupIds.add(n.id)
+    }
+    // React Flow needs parents before their children in the nodes array.
+    if (n.parentId != null && (!isStr(n.parentId) || !groupIds.has(n.parentId)))
+      throw new Error(`Node "${n.id}" is inside "${String(n.parentId)}", which is not a group listed before it.`)
+    if (ids.has(n.id)) throw new Error(`Duplicate node id "${n.id}".`)
     ids.add(n.id)
   }
   for (const e of raw.edges) {
@@ -85,6 +102,7 @@ export function parseDocument(raw: unknown): CanvasDocument {
 
 /** Saved canvas, or null if none / unreadable / older format (caller falls back to the default graph). */
 export function loadFromStorage(): CanvasDocument | null {
+  if (typeof localStorage === 'undefined') return null // tests (node)
   try {
     const text = localStorage.getItem(STORAGE_KEY)
     return text ? parseDocument(JSON.parse(text)) : null

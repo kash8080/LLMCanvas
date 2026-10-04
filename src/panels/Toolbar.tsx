@@ -1,8 +1,9 @@
-import { useReactFlow } from '@xyflow/react'
+import { getViewportForBounds, useReactFlow, useStoreApi } from '@xyflow/react'
 import { Download, PanelBottom, PanelRight, RotateCcw, Ruler, Upload, Workflow } from 'lucide-react'
 import { useRef } from 'react'
 import { formatCount } from '../engine/format'
-import { topNodes } from '../canvas/nodeFactory'
+import { numLayers } from '../canvas/groupTemplates'
+import { startBounds } from '../canvas/nodeFactory'
 import { parseDocument, toDocument } from '../store/persistence'
 import { useCanvasStore } from '../store/useCanvasStore'
 import { HyperparamsMenu } from './HyperparamsMenu'
@@ -25,15 +26,22 @@ function ToolbarButton({ onClick, icon: Icon, label, active }: { onClick: () => 
 
 export function Toolbar() {
   const fileInput = useRef<HTMLInputElement>(null)
-  const { fitView } = useReactFlow()
+  const { setViewport } = useReactFlow()
+  const flowStore = useStoreApi()
   const drawerOpen = useCanvasStore((s) => s.drawerOpen)
   const analysisOpen = useCanvasStore((s) => s.analysisOpen)
   const showEdgeShapes = useCanvasStore((s) => s.showEdgeShapes)
+  const layers = useCanvasStore((s) => numLayers(s.nodes))
   const totalParams = useCanvasStore((s) => Object.values(s.inference.nodes).reduce((acc, n) => acc + n.paramCount.total, 0))
   const { loadDocument, resetCanvas, setDrawerOpen, setAnalysisOpen, setShowEdgeShapes } = useCanvasStore.getState()
 
-  const fitSoon = () =>
-    setTimeout(() => fitView({ padding: 0.1, maxZoom: 1, duration: 300, nodes: topNodes(useCanvasStore.getState().nodes) }), 50)
+  // Show the start of the model. Uses the nodes' declared positions/sizes rather than fitView, which
+  // waits for freshly loaded nodes to be measured (unreliable while groups hide their children).
+  const fitSoon = () => {
+    const { width, height } = flowStore.getState()
+    const bounds = startBounds(useCanvasStore.getState().nodes)
+    if (bounds) void setViewport(getViewportForBounds(bounds, width, height, 0.05, 1, 0.1), { duration: 300 })
+  }
 
   const exportJson = () => {
     const { nodes, edges, hyperparams } = useCanvasStore.getState()
@@ -76,6 +84,9 @@ export function Toolbar() {
       <div className="ml-3 hidden items-center gap-3 text-xs text-slate-500 md:flex">
         <span title={`${totalParams.toLocaleString()} parameters`}>
           Params <span className="font-semibold text-slate-700 tabular-nums">{formatCount(totalParams)}</span>
+        </span>
+        <span title="num_layers = Transformer Blocks on the canvas">
+          Layers <span className="font-semibold text-slate-700 tabular-nums">{layers}</span>
         </span>
         <span className="text-slate-400">Mem —</span>
       </div>

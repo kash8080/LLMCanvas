@@ -3,14 +3,16 @@ import { cs336Document } from '../defaults/cs336Graph'
 import { nodeRegistry } from '../nodes/registry'
 import { toGraphModel } from '../store/inference'
 import type { AppNode } from '../canvas/types'
+import { flattenGroups } from './groups'
 import { DEFAULT_HYPERPARAMS, validateHyperparams } from './hyperparams'
 import { inferShapes, wouldCreateCycle } from './infer'
 import { formatConcrete, formatSymbolic } from './shape'
 import type { GraphModel, Hyperparams } from './types'
 
+/** The default (grouped) graph, flattened onto the group proxies like the app does before inference. */
 function defaultGraph(): GraphModel {
   const doc = cs336Document()
-  return toGraphModel(doc.nodes as AppNode[], doc.edges)
+  return flattenGroups(toGraphModel(doc.nodes as AppNode[], doc.edges))
 }
 
 const run = (g: GraphModel, hp: Hyperparams = DEFAULT_HYPERPARAMS) => inferShapes(g, hp, nodeRegistry)

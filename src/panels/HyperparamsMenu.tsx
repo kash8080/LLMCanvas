@@ -1,5 +1,6 @@
 import { ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { useState } from 'react'
+import { numLayers } from '../canvas/groupTemplates'
 import { FLOAT_DTYPES, HYPERPARAM_INFO, validateHyperparams } from '../engine/hyperparams'
 import type { FloatDType } from '../engine/types'
 import { useCanvasStore } from '../store/useCanvasStore'
@@ -10,6 +11,7 @@ export function HyperparamsMenu() {
   const [open, setOpen] = useState(false)
   const hp = useCanvasStore((s) => s.hyperparams)
   const setHyperparam = useCanvasStore((s) => s.setHyperparam)
+  const layers = useCanvasStore((s) => numLayers(s.nodes))
   const problems = validateHyperparams(hp)
   const dHead = hp.d_model / hp.num_heads
 
@@ -61,8 +63,10 @@ export function HyperparamsMenu() {
               <Row label="d_head" symbol="d_model / H" help="Derived: size of each attention head.">
                 <span className="px-1.5 font-mono text-slate-500">{Number.isInteger(dHead) ? dHead : dHead.toFixed(2)}</span>
               </Row>
-              <Row label="num_layers" symbol="" help="Derived from the Transformer Block groups on the canvas (Phase 3).">
-                <span className="px-1.5 text-[11px] text-slate-400">from blocks (Phase 3)</span>
+              <Row label="num_layers" symbol="L" help="Derived: the number of Transformer Block groups on the canvas. Add a layer by dragging a Transformer Block from the palette or duplicating one (⌘D).">
+                <span className="px-1.5 font-mono text-slate-500">
+                  {layers} <span className="font-sans text-[11px] text-slate-400">= blocks</span>
+                </span>
               </Row>
             </div>
             {problems.length > 0 && (

@@ -83,13 +83,13 @@ Composite parts (**Transformer Block**, **Multi-Head Self-Attention**, **SwiGLU 
 - A group node has its own outer `in` / `out` ports. Inside, two small proxy nodes
   (`Block In`, `Block Out`) bridge the outer ports to the inner nodes. External edges always
   attach to the group's outer ports, so collapsing/expanding never rewires anything.
-- Shape inference recurses into the subgraph.
+- Shape inference stays flat: `flattenGroups` redirects edges on a group's outer ports onto its proxies.
 - **Frame size is fixed** whether collapsed or expanded. Collapsed = the frame renders a summary
   card (name, `×N`, params, in/out shape) and children are hidden. This avoids re-layout jumps.
-- **Level of detail by zoom** (thresholds tunable):
-  - zoom < ~0.5 → Transformer Block shown as one card
-  - 0.5–1.1 → block internals visible (RMSNorm, MHA card, Add, RMSNorm, SwiGLU card, Add)
-  - \> 1.1 → MHA / SwiGLU internals visible (Q/K/V proj, split heads, RoPE, SDPA, merge, out proj …)
+- **Level of detail by zoom** (thresholds in `src/canvas/lod.ts`, tuned for the default graph):
+  - zoom < 0.25 → Transformer Block shown as one card
+  - 0.25–0.6 → block internals visible (RMSNorm, MHA card, Add, RMSNorm, SwiGLU card, Add)
+  - ≥ 0.6 → MHA / SwiGLU internals visible (Q/K/V proj, split heads, RoPE, SDPA, merge, out proj …)
 - Each group has a manual override: *auto / always expanded / always collapsed*.
 - **Layers:** each layer is its **own Transformer Block group** on the canvas (no `×N` repeat).
   `num_layers` is **derived** = number of Transformer Block groups in the graph (shown read-only in
@@ -217,11 +217,11 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [x] Hyperparameters panel (global), param binding/override (`num_layers` shown read-only, derived in Phase 3)
 - [x] Default CS336 graph, **flat** (no groups yet)
 
-### Phase 3 — Groups & semantic zoom (R5)
-- [ ] Subgraph groups with outer ports + inner proxies; recursive inference
-- [ ] MHA, SwiGLU, Transformer Block templates (in palette too); `num_layers` derived from block count
-- [ ] Zoom-based LOD (3 levels) + per-group override; fixed frame size
-- [ ] Default graph switched to grouped version
+### Phase 3 — Groups & semantic zoom (R5) ✅
+- [x] Subgraph groups with outer ports + inner proxies; inference via `flattenGroups` (engine stays flat)
+- [x] MHA, SwiGLU, Transformer Block templates (in palette too); `num_layers` derived from block count
+- [x] Zoom-based LOD (3 levels, thresholds 0.25 / 0.6) + per-group override; fixed frame size
+- [x] Default graph switched to grouped version
 
 ### Phase 4 — Detail drawer (R4)
 - [ ] Drawer with sections: Overview, Parameters (editable, 🔗 binding), Shapes, Size, Points to remember, Formula

@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import type { AnnotationData, AppNode, StickyNode, TextBoxNode } from '../canvas/types'
 import { useCanvasStore } from '../store/useCanvasStore'
+import { GroupDetails } from './GroupDetails'
 import { PartDetails } from './PartDetails'
 
 const BG_SWATCHES = ['transparent', '#ffffff', '#fef08a', '#fed7aa', '#fecdd3', '#e9d5ff', '#bfdbfe', '#bbf7d0', '#e2e8f0']
@@ -39,6 +40,7 @@ export function DetailDrawer() {
 
 function NodeDetails({ node }: { node: AppNode }) {
   if (node.type === 'part') return <PartDetails node={node} Section={Section} />
+  if (node.type === 'group') return <GroupDetails node={node} Section={Section} />
   return (
     <div className="flex flex-col gap-5">
       <Section title="Element">

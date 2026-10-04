@@ -1,11 +1,12 @@
 import type { NodeProps } from '@xyflow/react'
 import { AlertTriangle } from 'lucide-react'
 import { formatCount } from '../../engine/format'
+import { GROUP_INPUT, isProxyType } from '../../engine/groups'
 import { formatConcrete } from '../../engine/shape'
 import type { NodeResult, Shape } from '../../engine/types'
 import { CATEGORY_INFO, getNodeDef } from '../../nodes/registry'
 import { useCanvasStore } from '../../store/useCanvasStore'
-import { PART_WIDTH } from '../nodeFactory'
+import { PART_WIDTH, PROXY_HEIGHT, PROXY_WIDTH } from '../nodeFactory'
 import { Port, portLeftPct } from '../Port'
 import type { PartNode as PartNodeType } from '../types'
 
@@ -14,6 +15,7 @@ export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
   const def = getNodeDef(data.partType)
   const result = useCanvasStore((s) => s.inference.nodes[id]) as NodeResult | undefined
   if (!def) return <div className="rounded border border-red-400 bg-white p-2 text-xs text-red-600">Unknown part “{data.partType}”</div>
+  if (isProxyType(def.type)) return <ProxyNode id={id} isInput={def.type === GROUP_INPUT} result={result} selected={selected} />
 
   const color = CATEGORY_INFO[def.category].color
   const status = result?.status ?? 'unknown'
@@ -70,6 +72,27 @@ export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/** The small in / out pill inside a group that bridges the group's outer port (src/engine/groups.ts). */
+function ProxyNode({ id, isInput, result, selected }: { id: string; isInput: boolean; result?: NodeResult; selected?: boolean }) {
+  const shape = result?.outputShapes[0] ?? null
+  const status = result?.status ?? 'unknown'
+  const text = shape ? formatConcrete(shape) : status === 'error' ? 'not connected' : '?'
+  return (
+    <div
+      className={`flex items-center justify-center gap-1.5 rounded-full border bg-white/90 px-2 text-[10px] leading-none ${
+        status === 'error' ? 'border-red-400 text-red-600' : selected ? 'border-indigo-400 text-slate-600' : 'border-dashed border-slate-300 text-slate-500'
+      }`}
+      style={{ width: PROXY_WIDTH, height: PROXY_HEIGHT }}
+      title={isInput ? 'Group input: what arrives at the group’s top port' : 'Group output: leaves through the group’s bottom port'}
+    >
+      {!isInput && <Port nodeId={id} kind="in" id="in" label="out" />}
+      <span className="font-semibold">{isInput ? 'in' : 'out'}</span>
+      <span className="font-mono text-slate-400">{text}</span>
+      {isInput && <Port nodeId={id} kind="out" id="out" label="in" />}
     </div>
   )
 }

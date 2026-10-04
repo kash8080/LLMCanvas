@@ -136,7 +136,7 @@ export interface GraphNode {
   id: string
   type: string
   params: Record<string, ParamValue>
-  /** Container (group) id — reserved for Phase 3 groups; ignored by inference today. */
+  /** Container (group) id. Only `flattenGroups` (engine/groups.ts) uses it, to find a group's proxies. */
   parentId?: string
 }
 

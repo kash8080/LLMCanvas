@@ -4,6 +4,7 @@ import { add } from './add'
 import { crossEntropy } from './crossEntropy'
 import { dataBatch } from './dataBatch'
 import { embedding } from './embedding'
+import { PROXY_DEFS } from './groupProxy'
 import { linear } from './linear'
 import { logits } from './logits'
 import { loss } from './loss'
@@ -35,7 +36,8 @@ export const NODE_DEFS: NodeDef[] = [
   loss,
 ]
 
-export const nodeRegistry: Record<string, NodeDef> = Object.fromEntries(NODE_DEFS.map((d) => [d.type, d]))
+/** Every part type: the palette parts plus the group proxies (which only appear inside groups). */
+export const nodeRegistry: Record<string, NodeDef> = Object.fromEntries([...NODE_DEFS, ...PROXY_DEFS].map((d) => [d.type, d]))
 
 export function getNodeDef(type: string): NodeDef | undefined {
   return nodeRegistry[type]

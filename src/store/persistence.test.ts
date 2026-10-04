@@ -21,8 +21,20 @@ describe('persistence', () => {
     expect(() => parseDocument(unknownPart)).toThrow('unknown part type')
   })
 
-  it('rejects Phase-1 (v1) saves so the app falls back to the default graph', () => {
+  it('rejects older (v1 / flat v2) saves so the app falls back to the default graph', () => {
     expect(() => parseDocument({ app: 'llm-canvas', version: 1, nodes: [], edges: [] })).toThrow('Unsupported file version')
+    expect(() => parseDocument({ app: 'llm-canvas', version: 2, nodes: [], edges: [] })).toThrow('Unsupported file version')
+  })
+
+  it('keeps group children (parentId / extent) and requires parents before children', () => {
+    const doc = cs336Document()
+    const out = parseDocument(JSON.parse(JSON.stringify(toDocument(doc.nodes as AppNode[], doc.edges, doc.hyperparams))))
+    const ln1 = out.nodes.find((n) => n.id === 'b1.ln1')!
+    expect(ln1.parentId).toBe('b1')
+    expect(ln1.extent).toBe('parent')
+    expect(out.nodes.find((n) => n.id === 'b1.q_proj')!.parentId).toBe('b1.attn')
+    const swapped = { ...doc, nodes: [...doc.nodes].reverse() }
+    expect(() => parseDocument(swapped)).toThrow('not a group listed before it')
   })
 
   it('fills missing/invalid hyperparams with defaults', () => {

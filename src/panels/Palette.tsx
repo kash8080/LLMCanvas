@@ -1,5 +1,6 @@
 import { StickyNote, Type } from 'lucide-react'
 import { DND_MIME, type PaletteItemId } from '../canvas/types'
+import { GROUP_DEF_LIST } from '../nodes/groups'
 import { CATEGORY_INFO, CATEGORY_ORDER, NODE_DEFS } from '../nodes/registry'
 
 function PaletteItem({ item, label, title, children }: { item: PaletteItemId; label: string; title: string; children: React.ReactNode }) {
@@ -27,6 +28,16 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 export function Palette() {
   return (
     <aside className="flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r border-slate-200 bg-white p-3">
+      <div>
+        <SectionTitle>Groups</SectionTitle>
+        <div className="flex flex-col gap-1">
+          {GROUP_DEF_LIST.map((g) => (
+            <PaletteItem key={g.type} item={`group:${g.type}`} label={g.label} title={`${g.docs.overview}\n\nDrag onto the canvas: adds the whole group with its parts.`}>
+              <span className="h-3 w-3 shrink-0 rounded-sm border-2" style={{ borderColor: g.color, background: `${g.color}33` }} />
+            </PaletteItem>
+          ))}
+        </div>
+      </div>
       {CATEGORY_ORDER.map((cat) => {
         const defs = NODE_DEFS.filter((d) => d.category === cat)
         if (defs.length === 0) return null

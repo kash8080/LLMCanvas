@@ -45,6 +45,22 @@ body,
   z-index: 1000 !important;
 }
 
+/* Group frames: our own component draws everything, so drop React Flow's built-in 'group' styling. */
+.react-flow__node-group,
+.react-flow__node-group.selectable:hover,
+.react-flow__node-group.selectable.selected,
+.react-flow__node-group.selectable:focus,
+.react-flow__node-group.selectable:focus-visible {
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  font-size: inherit;
+  color: inherit;
+}
+
 /* Checkerboard for the "transparent" colour swatch */
 .swatch-transparent {
   background-image:

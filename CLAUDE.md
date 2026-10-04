@@ -44,5 +44,5 @@ Vite + React + TypeScript, React Flow (`@xyflow/react` v12), Zustand, Tailwind, 
 - `pnpm typecheck` — `tsc` (noEmit)
 - `pnpm build` — typecheck + production build to `dist/`
 
-Saved canvas lives in `localStorage["llm-canvas:v1"]` (document format version 2, includes hyperparams);
+Saved canvas lives in `localStorage["llm-canvas:v1"]` (document format version 3: hyperparams + group frames with `parentId` children);
 clear it (or use Toolbar → Reset) to get the default graph. Older-format saves are ignored automatically.

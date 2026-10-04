@@ -13,7 +13,7 @@ import { NumberField } from './NumberField'
 export function PartDetails({ node, Section }: { node: PartNode; Section: (p: { title: string; children: React.ReactNode }) => React.ReactNode }) {
   const def = getNodeDef(node.data.partType)
   const result = useCanvasStore((s) => s.inference.nodes[node.id])
-  const setPartTitle = useCanvasStore((s) => s.setPartTitle)
+  const setTitle = useCanvasStore((s) => s.setTitle)
   if (!def || !result) return <p className="text-red-600">Unknown part type “{node.data.partType}”.</p>
 
   const cat = CATEGORY_INFO[def.category]
@@ -28,7 +28,7 @@ export function PartDetails({ node, Section }: { node: PartNode; Section: (p: { 
         <input
           value={node.data.title ?? ''}
           placeholder={def.label}
-          onChange={(e) => setPartTitle(node.id, e.target.value)}
+          onChange={(e) => setTitle(node.id, e.target.value)}
           className="w-full rounded border border-transparent px-1 py-0.5 text-base font-semibold text-slate-800 outline-none hover:border-slate-200 focus:border-indigo-400"
           title="Rename this part"
         />

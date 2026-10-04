@@ -125,3 +125,67 @@ node component, connection validation, default flat CS336 graph.
 - `num_layers` = count of `transformer_block` groups; show it in the Hyperparams popover.
 
 **Next:** Phase 3 — groups & semantic zoom.
+
+## 2026-10-04 — Session 4: Phase 3 (groups & semantic zoom)
+**Done**
+- Engine: `src/engine/groups.ts` — `flattenGroups(graph)` redirects edges on a group's outer ports
+  (`<groupId>.in` / `.out` handles) onto its `group_input` / `group_output` proxies; `inferShapes` is unchanged.
+  Proxies are ordinary identity NodeDefs (`src/nodes/groupProxy.ts`, in `nodeRegistry` but not the palette).
+- Groups: `src/nodes/groups.ts` (GroupDef: label, colour, `expandAtLod`, short docs; `GROUP_PORTS` = one `in`,
+  one `out`). React Flow node kind `'group'` with `data: {groupType, title?, mode: 'auto'|'expanded'|'collapsed'}`
+  and fixed `width`/`height`; children have `parentId` + `extent: 'parent'`.
+- Templates: `src/canvas/groupTemplates.ts` (`buildGroup` for transformer_block / mha / swiglu, nested; layout
+  constants + `GROUP_LAYOUT` sizes; `instantiateGroup` for the palette; `numLayers`, `nextBlockTitle`).
+  Default graph (`cs336Graph.ts`) now = Data → Embedding → Block 1 → Block 2 → ln_final → lm_head → Logits →
+  Cross-Entropy (+targets) → Loss, built from the same templates (66 nodes / 69 edges). Text-box block labels removed;
+  welcome sticky mentions zooming.
+- Inference bridge (`src/store/inference.ts`): `inferGraph` = flatten + infer + `summarizeGroups` →
+  `inference.groups[id]` = {params (sum of descendants), status, errors (prefixed `attn › q_proj: …`), in/out shape
+  (from proxies), contains, per-child breakdown}.
+- LOD (`src/canvas/lod.ts`): levels by zoom (<0.25 blocks are cards; <0.6 MHA/SwiGLU are cards; else all open),
+  read via `useStore(lodSelector)` (bucketed → re-render only on level change). `applyLod` / `hideEdgesOfHiddenNodes`
+  set `hidden` on the nodes/edges passed to React Flow (useMemo in Canvas; store nodes stay clean).
+- `GroupNode` (`src/canvas/nodes/GroupNode.tsx`): expanded = tinted frame + header (title, label, error count, params,
+  Auto/Open/Closed toggle); collapsed = summary card (text scales with frame width; shapes, params, contains, problems).
+  Outer ports grow when zoomed out (56/26/16 px) so cards can be wired. Drawer: `GroupDetails` (rename, display mode,
+  shapes, weights breakdown). Proxies render as small dashed pills (`in 32×256×512`).
+- Store: palette drop of `group:<type>` instantiates the whole template (new blocks titled "Block N"); ⌘D copies
+  groups with all descendants + internal edges (copy placed to the right; block copies renumbered); deleting a group
+  deletes its children (React Flow); a proxy alone can't be deleted (`withoutLoneProxies` via `onBeforeDelete`, hint).
+  `setPartTitle` → `setTitle` (parts + groups), new `setGroupMode`.
+- Connections (`connect.ts`): `nodePorts()` covers parts, proxies (one side only) and groups; edges must join nodes
+  with the same `parentId` (outside ↔ group outer port only, hint otherwise); cycle check runs on the flattened graph.
+  Port popover works on group ports (shape from the proxies); edge labels work (flattened edges keep their ids).
+- `num_layers` shown in the Hyperparams popover (read-only, `= blocks`) and as "Layers N" in the toolbar.
+- Persistence: doc **version 3**; saves `parentId` / `extent`; validates group type/mode/size and parents-before-children.
+  v2 (flat) saves fall back to the default graph.
+- Tests: 32 passing. New `src/store/groups.test.ts` (flattenGroups; grouped default = no errors, **16,468,480**;
+  per-group 3,113,984 / 1,048,576 / 2,064,384; nested error propagation; num_layers = 2; palette block → 3 layers,
+  **19,582,464**, "Block 3"; duplicate copies children + internal edges; proxy delete guard). Connect + persistence
+  tests extended. `pnpm build` passes.
+- Browser-checked at 1440×900: the three LOD levels, manual Open override, dragging a block moves its children,
+  ⌘D / Delete of a block, palette drop + wiring a new block in (body drop on a group, port drop on ln_final),
+  group port popover, outside→inner refusal hint, proxy delete guard, Reset.
+
+**Layout notes**
+- Block: residual column on the left (proxies, Adds), ln1/MHA and ln2/SwiGLU on a branch column to the right.
+  Sizes: Block 888×2124, MHA 616×822, SwiGLU 432×602 (all derived from constants in groupTemplates.ts).
+  Blocks are placed so their residual column is x = 0; Data Batch / Cross-Entropy / Loss on a lane right of them.
+- Start view / Reset / Import fit to the top 4 top-level nodes (welcome, data, embed, Block 1) → ~0.3 zoom at
+  1440×900 = level 1. Reset/Import now compute the viewport from declared positions (`startBounds` +
+  `getViewportForBounds`): `fitView` waits for freshly loaded nodes to be measured and stalled at level 0.
+
+**Gotchas**
+- React Flow's built-in `group` node type comes with default CSS (`.react-flow__node-group` padding/border/bg) —
+  overridden in `index.css`.
+- Handles must be rendered *after* a positioned card in the node, otherwise the card paints over them and a drag
+  from the port moves the node instead.
+- Edges touching child nodes get their z-index elevated by React Flow, so inner edges draw above the frame;
+  hidden nodes' edges must be hidden explicitly.
+- React Flow only deletes children whose parent comes earlier in the array — keep parents first everywhere.
+- Parts dropped from the palette onto an expanded group frame become top-level nodes (no re-parenting), so they
+  can't be wired to the group's inner parts. Fine for now.
+- Group frames are big, so whole-model views are ~0.1–0.15 zoom where plain parts are unreadable; that's the
+  fixed-frame trade-off (PLAN §7.2).
+
+**Next:** Phase 4 — detail drawer sections + docs content (parts *and* groups: `GROUP_DEFS[...].docs`).

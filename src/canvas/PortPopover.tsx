@@ -2,8 +2,9 @@ import { formatBytes } from '../engine/format'
 import { dtypeName } from '../engine/hyperparams'
 import { formatConcrete, formatSymbolic, numel, shapeBytes } from '../engine/shape'
 import type { Hyperparams, Shape } from '../engine/types'
-import { getNodeDef } from '../nodes/registry'
 import { useCanvasStore } from '../store/useCanvasStore'
+import { nodeTitle } from '../store/inference'
+import { nodePorts } from './connect'
 
 const WIDTH = 250
 
@@ -13,22 +14,32 @@ export function PortPopover() {
   const setPortPopover = useCanvasStore((s) => s.setPortPopover)
   const node = useCanvasStore((s) => (popover ? s.nodes.find((n) => n.id === popover.nodeId) : undefined))
   const result = useCanvasStore((s) => (popover ? s.inference.nodes[popover.nodeId] : undefined))
+  const group = useCanvasStore((s) => (popover ? s.inference.groups[popover.nodeId] : undefined))
+  const edges = useCanvasStore((s) => s.edges)
   const hp = useCanvasStore((s) => s.hyperparams)
-  if (!popover || node?.type !== 'part' || !result) return null
-  const def = getNodeDef(node.data.partType)
-  if (!def) return null
+  const ports = nodePorts(node)
+  if (!popover || !node || !ports || !(result || group)) return null
 
-  const ports = popover.kind === 'in' ? def.inputs : def.outputs
-  const index = ports.findIndex((p) => p.id === popover.portId)
-  const port = ports[index]
-  const shape = (popover.kind === 'in' ? result.inputShapes : result.outputShapes)[index] ?? null
+  const port = (popover.kind === 'in' ? ports.inputs : ports.outputs).find((p) => p.id === popover.portId)
   const close = () => setPortPopover(null)
 
+  let shape: Shape | null
   let note = ''
-  if (!shape) {
-    if (popover.kind === 'in' && result.errors.some((e) => e.includes(`'${port?.label}' is not connected`))) note = 'Not connected.'
-    else if (result.status === 'error') note = 'Unknown — this part has an error.'
-    else note = 'Unknown — something upstream has an error.'
+  if (group) {
+    // A group's outer port carries what its in / out proxy carries.
+    shape = popover.kind === 'in' ? group.inShape : group.outShape
+    const connected = edges.some((e) => (popover.kind === 'in' ? e.target === node.id : e.source === node.id))
+    if (!shape) note = !connected ? 'Not connected.' : group.status === 'error' ? 'Unknown — there is an error inside or upstream.' : 'Unknown — something upstream has an error.'
+  } else {
+    // (A proxy shows only one side, but that side is still port 0 of its def.)
+    const r = result!
+    const index = (popover.kind === 'in' ? ports.inputs : ports.outputs).findIndex((p) => p.id === popover.portId)
+    shape = (popover.kind === 'in' ? r.inputShapes : r.outputShapes)[index] ?? null
+    if (!shape) {
+      if (popover.kind === 'in' && r.errors.some((e) => e.includes(`'${port?.label}' is not connected`))) note = 'Not connected.'
+      else if (r.status === 'error') note = 'Unknown — this part has an error.'
+      else note = 'Unknown — something upstream has an error.'
+    }
   }
 
   const left = Math.min(popover.x + 12, window.innerWidth - WIDTH - 8)
@@ -51,7 +62,7 @@ export function PortPopover() {
             {popover.kind === 'in' ? 'IN' : 'OUT'}
           </span>
           <span className="font-semibold text-slate-800">{port?.label}</span>
-          <span className="truncate text-slate-400">of {node.data.title || def.label}</span>
+          <span className="truncate text-slate-400">of {nodeTitle(node)}</span>
         </div>
         {shape ? <ShapeFacts shape={shape} hp={hp} /> : <p className="text-slate-500">{note}</p>}
       </div>
