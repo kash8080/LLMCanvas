@@ -9,14 +9,21 @@ we only trace shapes and do arithmetic. Side project for learning: **keep it sim
 - [docs/PLAN.md](docs/PLAN.md) — architecture, node catalog, formulas, phased checklist.
 - [docs/PROGRESS.md](docs/PROGRESS.md) — session log; see the last entry for where we left off.
 
-At the end of a session: tick boxes in PLAN.md and append an entry to PROGRESS.md.
-If a decision changes the plan, update PLAN.md rather than letting it drift.
+After every major piece of work (not just at session end): tick boxes in PLAN.md, append an
+entry to PROGRESS.md (done / next / gotchas), and make a local git commit. If a decision changes
+the plan, update PLAN.md rather than letting it drift.
+
+## Hard rules
+- **Never `git push`** or add remotes. Local commits only.
+- **Only read files inside this project and the CS336 folder below.** Don't browse anywhere else on the machine.
+- Work is delegated to subagents phase by phase; the main session coordinates and verifies.
 
 ## Reference model
 CS336 Assignment 1 — `/Users/rahul/Documents/code/rahul/cs336/assignment1-basics/cs336_basics`.
 The default canvas, shapes, param formulas and docs content must match **that** code
 (pre-norm block, RMSNorm, RoPE, SwiGLU, no biases, no weight tying, AdamW) — not the original paper.
-Default hyperparams come from its `train.py`.
+Default hyperparams come from its `train.py`, except the default graph has **2** Transformer
+Blocks (user decision; `num_layers` is derived from the number of blocks on the canvas).
 
 ## Stack
 Vite + React + TypeScript, React Flow (`@xyflow/react` v12), Zustand, Tailwind, Vitest, pnpm.

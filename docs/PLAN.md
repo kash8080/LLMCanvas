@@ -1,6 +1,6 @@
 # LLM Canvas — Implementation Plan
 
-> **Status: DRAFT — awaiting approval.** Do not start Phase 1 until the user approves.
+> **Status: APPROVED (2026-10-04)** with the decisions in §8.
 > Requirements: [REQUIREMENTS.md](REQUIREMENTS.md). Session log: [PROGRESS.md](PROGRESS.md).
 
 ---
@@ -91,9 +91,10 @@ Composite parts (**Transformer Block**, **Multi-Head Self-Attention**, **SwiGLU 
   - 0.5–1.1 → block internals visible (RMSNorm, MHA card, Add, RMSNorm, SwiGLU card, Add)
   - \> 1.1 → MHA / SwiGLU internals visible (Q/K/V proj, split heads, RoPE, SDPA, merge, out proj …)
 - Each group has a manual override: *auto / always expanded / always collapsed*.
-- **Layers:** the Transformer Block group has a `repeat` param bound to `num_layers` and shows a
-  stacked-card "×4" look. Params/memory multiply by `repeat`. (Users can still duplicate a block
-  and set `repeat=1` on each if they want to see them separately.)
+- **Layers:** each layer is its **own Transformer Block group** on the canvas (no `×N` repeat).
+  `num_layers` is **derived** = number of Transformer Block groups in the graph (shown read-only in
+  the hyperparams panel). Users add a layer by duplicating a block / dragging one from the palette.
+  Default graph has **2 blocks** (`Block 1`, `Block 2`).
 
 ### 2.4 Canvas UX (R1, R2.5, R2.6, R3)
 - Inputs on **top** (hollow circle, blue), outputs on **bottom** (filled circle, green) — flow
@@ -104,7 +105,7 @@ Composite parts (**Transformer Block**, **Multi-Head Self-Attention**, **SwiGLU 
 - Click a port → small popover: symbolic shape, concrete shape, dtype, size in bytes.
 - Edge labels (toggleable): concrete shape, e.g. `32×256×512`.
 - Sticky note / text box: resizable, background color, text color, font size; edit by double-click.
-- Keyboard: Delete, Cmd+D duplicate, Cmd+Z/Shift+Cmd+Z undo/redo (Phase 7), Space+drag pan.
+- Keyboard: Delete, Cmd+D duplicate, Space+drag pan. (Undo/redo deferred.)
 
 ### 2.5 Layout of the app
 ```
@@ -127,7 +128,7 @@ Mirrors CS336 `cs336_basics`. Shapes use `B`=batch, `T`=seq len, `d`=d_model, `H
 
 | Part | Params (editable) | In → Out | Params count | CS336 file |
 |---|---|---|---|---|
-| Token Input | batch_size, seq_len | — → `B×T` (int) | 0 | DataLoading.py |
+| Data Batch | batch_size, seq_len | — → `input_ids B×T`, `targets B×T` (int) | 0 | DataLoading.py |
 | Embedding | vocab_size, d_model | `B×T` → `B×T×d` | V·d | Embedding.py |
 | RMSNorm | d_model, eps | `B×T×d` → same | d | RMSNorm.py |
 | Linear | in_features, out_features (no bias) | `…×in` → `…×out` | in·out | Linear.py |
@@ -139,24 +140,28 @@ Mirrors CS336 `cs336_basics`. Shapes use `B`=batch, `T`=seq len, `d`=d_model, `H
 | Multiply (⊙) | — | 2 same-shape → same | 0 | SwiGLU |
 | Add (residual) | — | 2 same-shape → same | 0 | TransformerBlock |
 | Softmax | dim | same → same | 0 | Softmax.py |
-| Cross-Entropy Loss | — | logits `B×T×V` + targets `B×T` → scalar | 0 | CrossEntropy.py |
-| Output / Logits | — | sink | 0 | |
+| Logits | — | `B×T×V` → `B×T×V` (labelled pass-through marking the model output) | 0 | TransformerLM output |
+| Cross-Entropy | — | logits `B×T×V` + targets `B×T` → loss (scalar) | 0 | CrossEntropy.py |
+| Loss | — | scalar sink | 0 | |
 | **Group:** Multi-Head Self-Attention | d_model, num_heads, rope on/off | `B×T×d` → `B×T×d` | 4·d² | MultiHeadSelfAttention.py |
 | **Group:** SwiGLU FFN | d_model, d_ff | `B×T×d` → `B×T×d` | 3·d·F | SwiGLU.py |
-| **Group:** Transformer Block | repeat (=num_layers) | `B×T×d` → `B×T×d` | 4d² + 3dF + 2d | TransformerBlock.py |
+| **Group:** Transformer Block | — | `B×T×d` → `B×T×d` | 4d² + 3dF + 2d | TransformerBlock.py |
 | Sticky note / Text box | bg color, text color, font size | — | — | |
 
 **Default graph (CS336 TransformerLM):**
-`Token Input → Embedding → [Transformer Block ×num_layers] → RMSNorm (ln_final) → Linear (lm_head, d→V) → Cross-Entropy (+ targets) / Logits`
+`Data Batch.input_ids → Embedding → Block 1 → Block 2 → RMSNorm (ln_final) → Linear (lm_head, d→V) → Logits → Cross-Entropy (+ Data Batch.targets) → Loss`
 
-Sanity check (unit test): default params = 5,120,000 (emb) + 4 × 3,113,984 (blocks) + 512 (ln_final)
-+ 5,120,000 (lm_head) = **22,696,448** (no weight tying, as in CS336).
+Default hyperparams = CS336 `train.py` except **2 layers** (user decision):
+`vocab_size=10000, context_length=256, d_model=512, num_heads=16, d_ff=1344, rope_theta=10000, batch_size=32, dtype=fp32`.
+
+Sanity check (unit test): default params = 5,120,000 (emb) + 2 × 3,113,984 (blocks) + 512 (ln_final)
++ 5,120,000 (lm_head) = **16,468,480** (no weight tying, as in CS336). With 4 blocks it would be 22,696,448.
 
 ---
 
 ## 4. Parameter accounting (R7)
 - Per node: total + list of weight tensors with shapes (e.g. `W1: 1344 × 512`).
-- Groups: sum of children × `repeat`.
+- Groups: sum of children.
 - Analysis panel: total with the formula written out
   `V·d + L·(4d² + 3dF + 2d) + d + d·V`, and a stacked bar by category:
   Embedding / Attention / FFN / Norms / LM head. Clicking a category highlights those nodes on canvas.
@@ -213,7 +218,7 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 
 ### Phase 3 — Groups & semantic zoom (R5)
 - [ ] Subgraph groups with outer ports + inner proxies; recursive inference
-- [ ] MHA, SwiGLU, Transformer Block templates (in palette too); `repeat` ×N with stacked look
+- [ ] MHA, SwiGLU, Transformer Block templates (in palette too); `num_layers` derived from block count
 - [ ] Zoom-based LOD (3 levels) + per-group override; fixed frame size
 - [ ] Default graph switched to grouped version
 
@@ -231,17 +236,14 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [ ] Mode / dtype / activation-checkpointing controls
 - [ ] Breakdown by component and by part; per-node contribution in drawer; optional "heat" tint on nodes by activation memory
 
-### Phase 7 — Polish (stretch, pick as time allows)
-- [ ] Undo/redo (zundo)
-- [ ] Drop a connection on empty canvas → quick-add menu that auto-connects
-- [ ] Plain visual "frames" for user-made grouping (Miro-style, no ports)
-- [ ] Extra parts for experimentation: LayerNorm, GELU/ReLU FFN, non-gated SiLU FFN (CS336 `SiLU.py`), weight tying toggle
-- [ ] KV-cache estimate for generation
+### Deferred (not planned for now — user said skip)
+Undo/redo, drop-connection-to-quick-add menu, user-made visual frames, extra part variants
+(LayerNorm, GELU/ReLU FFN, non-gated SiLU FFN, weight tying), KV-cache estimate.
 
 ---
 
 ## 7. Simplifications / dropped (for viability)
-1. **Layers shown as one block ×N**, not N separate copies (duplicating is still possible).
+1. ~~Layers as one ×N block~~ — reversed: N separate blocks (user decision).
 2. **Fixed-size group frames** across zoom levels — no automatic re-layout.
 3. **Only predefined composite groups** (Block / MHA / SwiGLU) have ports and LOD. User-made grouping
    is a stretch item and would be visual-only frames.
@@ -251,8 +253,10 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
    change shapes/params). AdamW appears only as the optimizer-memory setting.
 6. No collaboration/cloud save; localStorage + JSON file.
 
-## 8. Open questions (defaults assumed if not answered)
-- Q1. Layers as one `×N` block (default) vs N separate block copies on canvas?
-- Q2. Include `batch_size` in global hyperparams (default yes, 32 from `train.py`).
-- Q3. Show the loss (Cross-Entropy + targets) in the default graph, or end at logits? (default: include it, since it matters for training memory.)
-- Q4. Stretch items in Phase 7 — any you want promoted into the core?
+## 8. Decisions (2026-10-04)
+- D1. Layers = **N separate Transformer Block groups**, default **2**. `num_layers` is derived from the graph.
+- D2. `batch_size` is a global hyperparam (default 32).
+- D3. Default graph ends `… → Logits → Cross-Entropy (+ targets) → Loss`.
+- D4. Phase 7 stretch items skipped for now (see "Deferred").
+- D5. Work is delegated to subagents phase by phase; commit locally after each phase, **never push**.
+- D6. Only read files inside this project and the CS336 folder — nowhere else on the machine.
