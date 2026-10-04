@@ -207,14 +207,15 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [x] Sticky note & text box (resizable, colors, font size, inline edit)
 - [x] Autosave to localStorage; export/import JSON
 
-### Phase 2 — Engine: node types + shape inference (R2, R6)
-- [ ] `engine/types`, `hyperparams`, `resolve`, `infer` + unit tests
-- [ ] Primitive node defs (table in §3) and generic node component (ports, title, shape, param count badge)
-- [ ] Port styles, connection validation, snap-to-body connect
-- [ ] Error highlighting + messages; unknown-shape propagation
-- [ ] Port click popover & edge shape labels
-- [ ] Hyperparameters panel (global), param binding/override
-- [ ] Default CS336 graph, **flat** (no groups yet)
+### Phase 2 — Engine: node types + shape inference (R2, R6) ✅
+- [x] `engine/types`, `hyperparams`, `resolve`, `infer` (+ `shape` helpers) + unit tests
+- [x] Primitive node defs (table in §3) and generic node component (ports, title, shape, param count badge)
+      — every def also has `paramCount`, `savedForBackward` and short `docs` (expanded in Phase 4)
+- [x] Port styles, connection validation, snap-to-body connect
+- [x] Error highlighting + messages; unknown-shape propagation
+- [x] Port click popover & edge shape labels
+- [x] Hyperparameters panel (global), param binding/override (`num_layers` shown read-only, derived in Phase 3)
+- [x] Default CS336 graph, **flat** (no groups yet)
 
 ### Phase 3 — Groups & semantic zoom (R5)
 - [ ] Subgraph groups with outer ports + inner proxies; recursive inference
