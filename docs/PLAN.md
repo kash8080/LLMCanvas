@@ -269,9 +269,13 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [x] Breakdown by component and by part; per-node contribution in drawer; optional "heat" tint on nodes by activation memory
       (+ formulas, activations by category/layer, top tensors, "where to optimise" insights, category highlight)
 
-### Deferred (not planned for now — user said skip)
-Undo/redo, drop-connection-to-quick-add menu, user-made visual frames, extra part variants
-(LayerNorm, GELU/ReLU FFN, non-gated SiLU FFN, weight tying), KV-cache estimate.
+### Phase 7 — Extras (approved 2026-10-05)
+- [ ] 7a. Removing items made obvious: Delete button in drawer header, right-click context menu (delete / duplicate / …), delete for edges too (Delete/Backspace already works)
+- [ ] 7a. Undo/redo (Cmd+Z / Shift+Cmd+Z + toolbar buttons) covering all graph edits
+- [ ] 7a. Drop a connection on empty canvas → quick-add menu that creates a part and auto-connects it
+- [ ] 7b. User-made visual frames (Miro-style, no ports): titled, coloured, resizable, moves what's inside
+- [ ] 7c. Extra part variants: LayerNorm, GELU, ReLU, non-gated FFN (CS336 `SiLU.py`) + docs; weight-tying toggle (lm_head shares embedding)
+- [ ] 7d. KV-cache estimate for generation (memory)
 
 ---
 
@@ -290,6 +294,6 @@ Undo/redo, drop-connection-to-quick-add menu, user-made visual frames, extra par
 - D1. Layers = **N separate Transformer Block groups**, default **2**. `num_layers` is derived from the graph.
 - D2. `batch_size` is a global hyperparam (default 32).
 - D3. Default graph ends `… → Logits → Cross-Entropy (+ targets) → Loss`.
-- D4. Phase 7 stretch items skipped for now (see "Deferred").
+- D4. ~~Phase 7 skipped~~ → Phase 7 approved on 2026-10-05, plus a visible way to remove items.
 - D5. Work is delegated to subagents phase by phase; commit locally after each phase, **never push**.
 - D6. Only read files inside this project and the CS336 folder — nowhere else on the machine.
