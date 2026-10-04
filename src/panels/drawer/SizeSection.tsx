@@ -1,10 +1,14 @@
-// "Size" section: parameter count (+ formula, weight tensors / per-child breakdown).
-// Phase 6 adds the memory contribution as a sub-section: see <MemoryContribution> below.
-import { formatCount } from '../../engine/format'
+// "Size" section: parameter count (+ formula, weight tensors / per-child breakdown) and the
+// memory contribution for the current mode (<MemoryContribution>, engine/memory.ts).
+import type { ReactNode } from 'react'
+import { formatBytes, formatCount } from '../../engine/format'
+import type { MemoryReport, MemTensor } from '../../engine/memory'
+import { formatConcrete } from '../../engine/shape'
 import type { ParamCountResult } from '../../engine/types'
 import type { GroupSummary } from '../../store/inference'
-import { useCanvasStore } from '../../store/useCanvasStore'
-import { PARAM_CATEGORY_INFO } from '../../nodes/registry'
+import { selectMemory, useCanvasStore } from '../../store/useCanvasStore'
+import { MEMORY_CATEGORY_INFO, PARAM_CATEGORY_INFO } from '../../nodes/registry'
+import { MODE_INFO, pct, savedText, saversText, tensorName, titleOf, type NodeIndex } from '../analysis/memoryText'
 import { Formula } from './DocsSections'
 import { Section, SubHeading } from './ui'
 import { useFocusNode } from './useFocusNode'
@@ -133,9 +137,107 @@ function ModelShare({ nodeId }: { nodeId: string }) {
 }
 
 /**
- * Phase 6 hook (R8.2): this part's / group's memory contribution — e.g. a `<SubHeading>Memory</SubHeading>`
- * followed by its saved-for-backward tensors and bytes for the current mode. Renders nothing until then.
+ * Memory for the current mode (R8.2). Parts: the tensors they save for backward (or their live set at
+ * the forward peak) and their weights' share; groups: the activations of the parts inside plus the
+ * weights / gradients / optimizer state of their params.
  */
-function MemoryContribution(_props: { nodeId: string }) {
-  return null
+function MemoryContribution({ nodeId }: { nodeId: string }) {
+  const report = useCanvasStore(selectMemory)
+  const nodes = useCanvasStore((s) => s.nodes)
+  const paramReport = useCanvasStore((s) => s.inference.params)
+  const byId: NodeIndex = new Map(nodes.map((n) => [n.id, n]))
+  const isGroup = byId.get(nodeId)?.type === 'group'
+  const counted = paramReport.parts[nodeId]?.connected ? paramReport.parts[nodeId].params : (paramReport.groups[nodeId]?.connected ?? 0)
+  const a = report.activations
+  const acts = isGroup ? (report.groups[nodeId]?.activations ?? 0) : (a.byPart[nodeId] ?? 0)
+
+  return (
+    <>
+      <SubHeading>
+        Memory · {MODE_INFO[report.mode].label} · {report.b} B/value{report.checkpointing ? ' · checkpointing' : ''}
+      </SubHeading>
+      {counted > 0 && <WeightsLine params={counted} report={report} />}
+      {report.mode === 'forward' ? (
+        <p className="text-xs text-slate-500">
+          {acts > 0 ? (
+            <>
+              {isGroup ? 'Largest live set inside' : 'Live while it runs (inputs + outputs + temporaries)'}:{' '}
+              <span className="font-mono text-slate-700">{formatBytes(acts)}</span>.{' '}
+            </>
+          ) : (
+            'Nothing live here (not in the model, or shape unknown). '
+          )}
+          {a.peakPart === nodeId ? (
+            <span className="font-medium text-red-600">This is the forward peak.</span>
+          ) : (
+            a.peakPart && <>Forward peak: {titleOf(a.peakPart, byId)} ({formatBytes(a.total)}).</>
+          )}
+        </p>
+      ) : isGroup ? (
+        <p className="text-xs text-slate-500">
+          Activations produced inside: <span className="font-mono text-slate-700">{formatBytes(acts)}</span> ({pct(acts, a.total)} of activations)
+          {a.recomputeBlock === nodeId && ' — this block is the one recomputed during backward (checkpointing).'}
+        </p>
+      ) : (
+        <PartSaved nodeId={nodeId} report={report} byId={byId} acts={acts} />
+      )}
+    </>
+  )
+}
+
+/** "weights 1.0 MB · grads 1.0 MB · AdamW 2.1 MB" for these params in the current mode. */
+function WeightsLine({ params, report }: { params: number; report: MemoryReport }) {
+  const w = params * report.b
+  const parts = [`weights ${formatBytes(w)}`]
+  if (report.mode !== 'forward') parts.push(`grads ${formatBytes(w)}`)
+  if (report.mode === 'train') parts.push(`AdamW m+v ${formatBytes(2 * w)}`)
+  return <p className="mb-1 text-xs text-slate-500">{parts.join(' · ')}</p>
+}
+
+function PartSaved({ nodeId, report, byId, acts }: { nodeId: string; report: MemoryReport; byId: NodeIndex; acts: number }) {
+  const tensors = report.activations.tensors
+  const saves = tensors.filter((t) => t.savedBy.includes(nodeId))
+  const keptForOthers = tensors.filter((t) => t.owner === nodeId && !t.savedBy.includes(nodeId))
+  const nothing = saves.length === 0 && keptForOthers.length === 0
+  return (
+    <div className="space-y-1">
+      {nothing && <p className="text-xs text-slate-500">Saves nothing for backward.</p>}
+      {saves.length > 0 && <div className="text-[11px] text-slate-400">Saves for backward</div>}
+      {saves.map((t) => (
+        <TensorRow key={t.key} t={t} byId={byId}>
+          {t.owner !== nodeId && <>counted under {titleOf(t.owner, byId)}, which produced it</>}
+          {t.savedBy.length > 1 && <>{t.owner !== nodeId ? ' · ' : ''}counted once — shared with {saversText(t, byId, nodeId)}</>}
+          {!t.counted && <span className="text-amber-700"> · not kept: recomputed during backward (checkpointing)</span>}
+          {t.role === 'recompute' && ' · held while this block is recomputed'}
+          {t.role === 'block_input' && ' · kept as the checkpointed block input'}
+        </TensorRow>
+      ))}
+      {keptForOthers.length > 0 && <div className="pt-1 text-[11px] text-slate-400">Its output, kept for backward by others</div>}
+      {keptForOthers.map((t) => (
+        <TensorRow key={t.key} t={t} byId={byId}>
+          {savedText(t, byId)}
+          {!t.counted && <span className="text-amber-700"> · not kept: recomputed during backward (checkpointing)</span>}
+        </TensorRow>
+      ))}
+      {acts > 0 && (
+        <p className="text-xs text-slate-500">
+          Counted under this part: <span className="font-mono text-slate-700">{formatBytes(acts)}</span> ({pct(acts, report.activations.total)} of activations)
+        </p>
+      )}
+    </div>
+  )
+}
+
+function TensorRow({ t, byId, children }: { t: MemTensor; byId: NodeIndex; children?: ReactNode }) {
+  return (
+    <div className={`rounded-md border border-slate-100 bg-slate-50 px-2.5 py-1.5 text-xs ${t.counted ? '' : 'opacity-60'}`}>
+      <div className="flex items-baseline gap-2">
+        <span className="mt-0.5 h-2 w-2 shrink-0 self-center rounded-sm" style={{ background: MEMORY_CATEGORY_INFO[t.category].color }} title={MEMORY_CATEGORY_INFO[t.category].label} />
+        <span className="min-w-0 truncate text-slate-700">{tensorName(t, byId)}</span>
+        <span className="ml-auto shrink-0 font-mono text-slate-600 tabular-nums">{formatBytes(t.bytes)}</span>
+      </div>
+      <div className="pl-4 font-mono text-[11px] text-slate-400">{formatConcrete(t.shape)}{t.shape.dtype === 'int64' ? ' int64' : ''}</div>
+      {children && <div className="pl-4 text-[11px] leading-snug text-slate-500">{children}</div>}
+    </div>
+  )
 }

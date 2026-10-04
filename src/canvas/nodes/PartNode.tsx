@@ -4,9 +4,9 @@ import { formatCount } from '../../engine/format'
 import { GROUP_INPUT, isProxyType } from '../../engine/groups'
 import { formatConcrete } from '../../engine/shape'
 import type { NodeResult, Shape } from '../../engine/types'
-import { CATEGORY_INFO, getNodeDef, PARAM_CATEGORY_INFO } from '../../nodes/registry'
+import { CATEGORY_INFO, getNodeDef, highlightInfo } from '../../nodes/registry'
 import { useCanvasStore } from '../../store/useCanvasStore'
-import { glow, partHighlight } from '../highlight'
+import { glow, heatColor, partHeat, partHighlight } from '../highlight'
 import { lodSelector } from '../lod'
 import { PART_WIDTH, PROXY_HEIGHT, PROXY_WIDTH } from '../nodeFactory'
 import { Port, portLeftPct } from '../Port'
@@ -18,6 +18,7 @@ export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
   const result = useCanvasStore((s) => s.inference.nodes[id]) as NodeResult | undefined
   const highlight = useCanvasStore((s) => partHighlight(s, id))
   const highlightKey = useCanvasStore((s) => s.highlight)
+  const heat = useCanvasStore((s) => partHeat(s, id))
   const lod = useStore(lodSelector)
   // false = has weights but doesn't feed Logits / Loss, so it isn't counted in the model total.
   const counted = useCanvasStore((s) => s.inference.params.parts[id]?.connected ?? true)
@@ -43,7 +44,11 @@ export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
       className={`group relative rounded-lg border bg-white shadow-sm transition ${frame} ${selected && status !== 'ok' ? 'shadow-lg' : ''} ${
         highlight === 'dim' ? 'opacity-25' : ''
       }`}
-      style={{ width: PART_WIDTH, boxShadow: highlight === 'match' && highlightKey ? glow(PARAM_CATEGORY_INFO[highlightKey].color, GLOW_RING[lod], GLOW_BLUR[lod]) : undefined }}
+      style={{
+        width: PART_WIDTH,
+        boxShadow: highlight === 'match' && highlightKey ? glow(highlightInfo(highlightKey).color, GLOW_RING[lod], GLOW_BLUR[lod]) : undefined,
+        background: heat !== null ? heatColor(heat) : undefined,
+      }}
     >
       <div className="absolute inset-x-0 top-0 h-1.5 rounded-t-lg" style={{ background: color, opacity: status === 'unknown' ? 0.4 : 1 }} />
 

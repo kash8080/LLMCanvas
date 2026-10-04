@@ -75,6 +75,8 @@ export interface ParamReport {
   unconnectedIds: string[]
   /** False when there is no Logits / Loss part (then every part counts as connected). */
   hasOutput: boolean
+  /** Ids of every part (with or without weights) that belongs to the model: feeds Logits / Loss, or all parts when there is none. Memory uses it too. */
+  connectedIds: Set<string>
   byCategory: Record<ParamCategory, number>
   /** Every part with params > 0. */
   parts: Record<string, PartParams>
@@ -195,6 +197,7 @@ export function accountParams({ graph, groups, inference, defs, hp }: ParamAccou
     unconnected,
     unconnectedIds,
     hasOutput,
+    connectedIds: hasOutput ? connected : new Set(graph.nodes.map((n) => n.id)),
     byCategory,
     parts,
     rows,
@@ -264,7 +267,7 @@ export function paramInsights(report: ParamReport): string[] {
 }
 
 /** Kahn's algorithm; nodes on cycles are appended at the end in input order. */
-function topoOrder(ids: string[], edges: { source: string; target: string }[]): string[] {
+export function topoOrder(ids: string[], edges: { source: string; target: string }[]): string[] {
   const indegree = new Map(ids.map((id) => [id, 0]))
   const successors = new Map<string, string[]>(ids.map((id) => [id, []]))
   for (const e of edges) {

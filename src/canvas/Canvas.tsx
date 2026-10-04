@@ -13,10 +13,11 @@ import {
 } from '@xyflow/react'
 import { X } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
-import { formatCount } from '../engine/format'
+import { formatBytes, formatCount } from '../engine/format'
+import { isMemKey, type MemoryCategory } from '../engine/memory'
 import { GROUP_DEFS } from '../nodes/groups'
-import { CATEGORY_INFO, getNodeDef, PARAM_CATEGORY_INFO } from '../nodes/registry'
-import { useCanvasStore, withoutLoneProxies } from '../store/useCanvasStore'
+import { CATEGORY_INFO, getNodeDef, highlightInfo } from '../nodes/registry'
+import { selectMemory, useCanvasStore, withoutLoneProxies, type CanvasState } from '../store/useCanvasStore'
 import { connectionProblem, connectionToBody } from './connect'
 import { paletteItemSize } from './groupTemplates'
 import { applyLod, hideEdgesOfHiddenNodes, lodSelector } from './lod'
@@ -168,18 +169,26 @@ export function Canvas() {
   )
 }
 
-/** "Highlighting: Attention · 2.10M" over the canvas while a category is highlighted. */
+/** "Attention · 2.10M params" or "Attention probs · 268.4 MB" for the highlighted category. */
+function highlightAmount(s: CanvasState): string {
+  const key = s.highlight
+  if (!key) return ''
+  if (isMemKey(key)) return formatBytes(selectMemory(s).activations.byCategory[key.slice(4) as MemoryCategory])
+  return `${formatCount(key === 'unconnected' ? s.inference.params.unconnected : s.inference.params.byCategory[key])} params`
+}
+
+/** "Highlighting: Attention · 2.10M params" over the canvas while a category is highlighted. */
 function HighlightChip() {
   const key = useCanvasStore((s) => s.highlight)
-  const params = useCanvasStore((s) => (s.highlight === 'unconnected' ? s.inference.params.unconnected : s.highlight ? s.inference.params.byCategory[s.highlight] : 0))
+  const amount = useCanvasStore(highlightAmount)
   const setHighlight = useCanvasStore((s) => s.setHighlight)
   if (!key) return null
-  const info = PARAM_CATEGORY_INFO[key]
+  const info = highlightInfo(key)
   return (
     <div className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 py-1 pr-1 pl-3 text-xs text-slate-600 shadow">
       <span className="h-2.5 w-2.5 rounded-full" style={{ background: info.color }} />
       <span>
-        Highlighting <span className="font-semibold text-slate-800">{info.label}</span> · {formatCount(params)} params
+        Highlighting <span className="font-semibold text-slate-800">{info.label}</span> · {amount}
       </span>
       <button
         type="button"

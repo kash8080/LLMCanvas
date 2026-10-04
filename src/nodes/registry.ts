@@ -1,4 +1,5 @@
 // Registry of model-part definitions (NodeDef), one file per part in this folder.
+import { isMemKey, type MemoryCategory, type MemoryComponent, type MemoryHighlightKey } from '../engine/memory'
 import type { HighlightKey } from '../engine/params'
 import type { Category, NodeDef } from '../engine/types'
 import { add } from './add'
@@ -67,4 +68,29 @@ export const PARAM_CATEGORY_INFO: Record<HighlightKey, { label: string; color: s
   lm_head: { label: 'LM head', color: '#6366f1', help: 'The Linear feeding Logits: d_model · V' },
   other: { label: 'Other', color: '#94a3b8', help: 'Weights outside the standard structure (e.g. an extra Linear)' },
   unconnected: { label: 'Unconnected', color: '#f59e0b', help: 'Parts that don’t feed Logits / Loss — not counted in the model total' },
+}
+
+/** Activation categories of the memory estimate (engine/memory.ts). */
+export const MEMORY_CATEGORY_INFO: Record<MemoryCategory, { label: string; color: string; help: string }> = {
+  attn_probs: { label: 'Attention probs (B·H·T·T)', color: '#e11d48', help: 'softmax(QKᵀ/√d_k) saved by each attention: B · H · T² per layer' },
+  attention: { label: 'Attention other', color: '#a855f7', help: 'Q, K, V after RoPE, the merged heads (output_proj input): B · T · d each' },
+  ffn: { label: 'FFN', color: '#f97316', help: 'SwiGLU tensors: w1 and w3 outputs, SiLU output, gate output — B · T · d_ff each' },
+  norm: { label: 'Norms', color: '#14b8a6', help: 'RMSNorm outputs (inputs of the projections) and their per-token rms' },
+  embedding: { label: 'Embedding', color: '#3b82f6', help: 'Token ids (int64) and the embedding output (Block 1’s input)' },
+  logits: { label: 'Logits / loss', color: '#6366f1', help: 'B · T · V logits saved by the cross-entropy, plus the targets' },
+  residual: { label: 'Residual / other', color: '#94a3b8', help: 'Residual-stream tensors (Add outputs) and anything else' },
+}
+
+/** Memory components (stacked bar in the Memory tab). */
+export const MEMORY_COMPONENT_INFO: Record<MemoryComponent, { label: string; color: string; help: string }> = {
+  weights: { label: 'Weights', color: '#0ea5e9', help: 'Every parameter: P · bytes' },
+  gradients: { label: 'Gradients', color: '#f59e0b', help: 'One gradient per parameter, same dtype: P · bytes' },
+  optimizer: { label: 'Optimizer', color: '#8b5cf6', help: 'AdamW m and v per parameter: 2 · P · bytes' },
+  activations: { label: 'Activations', color: '#ef4444', help: 'Tensors kept for backward (or live at the forward peak)' },
+  buffers: { label: 'Buffers', color: '#64748b', help: 'RoPE cos/sin tables (non-persistent buffers)' },
+}
+
+/** Label + colour of anything the analysis panel can highlight. */
+export function highlightInfo(key: HighlightKey | MemoryHighlightKey): { label: string; color: string; help: string } {
+  return isMemKey(key) ? MEMORY_CATEGORY_INFO[key.slice(4) as MemoryCategory] : PARAM_CATEGORY_INFO[key]
 }

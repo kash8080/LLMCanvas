@@ -289,3 +289,57 @@ node component, connection validation, default flat CS336 graph.
 - Ref-based clicks in the browser pane log harmless React Flow `nodrag` errors (`view` is null on synthetic events).
 
 **Next:** Phase 6 — memory estimation (`engine/memory` + tests, mode/dtype/checkpointing controls, Memory tab).
+
+## 2026-10-05 — Session 7: Phase 6 (memory estimation)
+**Done**
+- `src/engine/memory.ts` (pure): `estimateMemory({graph (flattened), groups, inference, params, defs, hp, mode, checkpointing})`
+  → `MemoryReport`: total, `byComponent` {weights, gradients, optimizer, activations, buffers}, activations
+  {`tensors` (unique, biggest first, each with producer/owner/category/row/savedBy/counted/role), `byCategory`,
+  `byPart`, `rows`, `peakPart` (forward), `recomputeBlock` / `blockInputBytes` (checkpointing), `skipped`},
+  RoPE `buffers`, per-group activations + highlight keys, per-part keys. Plus `memoryFormulas(report)`,
+  `memoryInsights(input, report)` (re-runs the estimate for "checkpointing would save …" / "bf16 would …") and
+  `estimateWith`. Rules are written up in PLAN §5 (updated): unique tensor = producer + port after skipping
+  proxies/Logits; attribution to the producer; RoPE buffers once per MHA group; checkpointing = block inputs +
+  largest block once; forward = peak live set incl. temporaries (attention probs).
+- `accountParams` now exports `connectedIds` (every model part, also weightless ones); `topoOrder` is exported.
+- Store: `memoryMode` (default `'train'`), `checkpointing`, `memoryHeat` (+ setters; UI state, not persisted),
+  `AnalysisTab` adds `'memory'`, `highlight` is now `CanvasHighlight` = param keys | `mem:<category>`.
+  `selectMemory(s)` (useCanvasStore.ts) → `memoryFor()` in `store/inference.ts`, memoised on
+  inference / hyperparams / mode / checkpointing. `CanvasInference` now carries `graph` + `groupInfos`.
+- Toolbar: Mode `Forward | Fwd+Bwd | Train`, dtype select, "Act. checkpointing" checkbox (disabled in Forward),
+  "Mem 1.51 GB" chip → Memory tab. Toolbar button labels now only show at ≥ 2xl (icons + tooltips below).
+- `src/panels/analysis/MemoryTab.tsx`: total + mode explanation, component stacked bar + chips, formulas with numbers,
+  activation category bar (click = highlight, Esc clears), "Where to optimise", activations by layer (click = focus),
+  top 8 tensors (name, shape, bytes, "saved by … · stored once"; click = focus the owning part), "Heat on canvas"
+  toggle. Columns use a container query (`@container` on the panel body) so it adapts when the drawer is open.
+  Display helpers in `src/panels/analysis/memoryText.ts` (`MODE_INFO`, `tensorName`, `savedText`, `pct`).
+- Drawer: `MemoryContribution` in `SizeSection.tsx` — parts: weights/grads/AdamW of their params, "Saves for backward"
+  (with "counted under <producer>", "counted once — shared with …", "not kept (checkpointing)"), "Its output, kept for
+  backward by others", bytes counted under the part; forward mode: live bytes + peak note. Groups: weights line +
+  activations produced inside (forward: largest live set inside).
+- Canvas: `highlight.ts` handles memory keys (`partKeys` / `groups[id].keys`); `highlightInfo(key)` in the registry
+  (`MEMORY_CATEGORY_INFO`, `MEMORY_COMPONENT_INFO`); heat tint (`partHeat` / `groupHeat`, √-scaled red) on parts and
+  collapsed group cards.
+- Tests: `src/engine/memory.test.ts` (18): weights 65,873,920; grads; optimizer 131,747,840; RoPE 2 × 32,768;
+  probs 134,217,728 per layer / 268,435,456 total; logits 327,680,000 attributed to lm_head; ln1 output once
+  (saved by q/k/v); exact total; rows; int64 ids; bf16 halving; checkpointing (2 block inputs of B·T·d, recompute =
+  one block − its input, total 822,837,248); forward peak (lm_head, < fwd_bwd; SDPA live = 4·B·T·d + probs);
+  T = 1024 → probs ×16; formulas; insights. `formatBytes` shows GB with 2 decimals. 104 tests pass; `pnpm build` passes.
+- Browser-checked at 1440×900: Train / Forward / checkpointing numbers, Attention-probs highlight (attn cards glow),
+  top-tensor click → focuses SDPA, drawer Memory on SDPA, ln1, q_proj, Cross-Entropy, attn group, Block 1,
+  context_length 1024 (Train 8.49 GB; probs 52 % of activations; 5.17 GB with checkpointing), bf16 → 4.24 GB, heat tint.
+
+**Default numbers (fp32, 2 blocks)**: Forward 410.4 MB (peak at lm_head = 344.5 MB), Fwd+Bwd 1.38 GB
+(activations 1.25 GB), Train 1.51 GB, Train + checkpointing 1.09 GB (activations 822.8 MB).
+
+**Gotchas**
+- Never build a zustand selector that returns a fresh array/object each call (e.g. `memoryInsights(...)`) — it loops.
+  `selectMemory` is safe because `memoryFor` memoises on its inputs.
+- Built-in browser screenshots sometimes lag one action behind; take a second screenshot (or read the DOM) to confirm.
+- Activations are attributed to the *producing* part, so a block's row includes its output (the next block's input) but
+  not its own input; with checkpointing the block-input tensors are tagged `role: 'block_input'`.
+- The estimate keeps exactly the tensors in each NodeDef's `savedForBackward`; real PyTorch autograd of CS336's
+  hand-written softmax / cross-entropy keeps extra B·H·T² / B·T·V intermediates (noted in the tab's ⓘ and PLAN §5).
+
+**Next:** all planned phases complete — candidates from the Deferred list (undo/redo, drop-connection quick-add,
+user frames, more part variants, KV-cache estimate), or persisting mode/checkpointing in the document.

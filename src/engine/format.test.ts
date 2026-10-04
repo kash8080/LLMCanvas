@@ -15,5 +15,6 @@ describe('formatBytes', () => {
     expect(formatBytes(512)).toBe('512 B')
     // attention probs for one layer with CS336 defaults: 32·16·256·256·4 bytes
     expect(formatBytes(32 * 16 * 256 * 256 * 4)).toBe('134.2 MB')
+    expect(formatBytes(1_250_721_792)).toBe('1.25 GB')
   })
 })

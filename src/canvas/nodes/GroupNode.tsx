@@ -4,9 +4,9 @@ import { formatCount } from '../../engine/format'
 import { formatConcrete, formatSymbolic } from '../../engine/shape'
 import type { Shape } from '../../engine/types'
 import { GROUP_DEFS } from '../../nodes/groups'
-import { PARAM_CATEGORY_INFO } from '../../nodes/registry'
+import { highlightInfo } from '../../nodes/registry'
 import { useCanvasStore } from '../../store/useCanvasStore'
-import { glow, groupHighlight } from '../highlight'
+import { glow, groupHeat, groupHighlight, heatColor } from '../highlight'
 import { GROUP_HEADER, GROUP_LAYOUT } from '../groupTemplates'
 import { isGroupExpanded, lodSelector } from '../lod'
 import { Port } from '../Port'
@@ -23,6 +23,7 @@ export function GroupNode({ id, data, selected, width }: NodeProps<GroupNodeType
   const summary = useCanvasStore((s) => s.inference.groups[id])
   const highlight = useCanvasStore((s) => groupHighlight(s, id))
   const highlightKey = useCanvasStore((s) => s.highlight)
+  const heat = useCanvasStore((s) => groupHeat(s, id))
   // Weights inside, none of them feeding Logits / Loss (e.g. a block not wired in yet).
   const uncounted = useCanvasStore((s) => {
     const g = s.inference.params.groups[id]
@@ -74,7 +75,8 @@ export function GroupNode({ id, data, selected, width }: NodeProps<GroupNodeType
           style={{
             fontSize: (width ?? 400) / 16,
             borderColor: status === 'error' ? undefined : def.color,
-            boxShadow: highlight === 'match' && highlightKey ? glow(PARAM_CATEGORY_INFO[highlightKey].color, '0.5em', '2em') : undefined,
+            boxShadow: highlight === 'match' && highlightKey ? glow(highlightInfo(highlightKey).color, '0.5em', '2em') : undefined,
+            background: heat !== null ? heatColor(heat) : undefined,
           }}
           title={errorTip}
         >

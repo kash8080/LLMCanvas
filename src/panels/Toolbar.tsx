@@ -1,11 +1,15 @@
 import { getViewportForBounds, useReactFlow, useStoreApi } from '@xyflow/react'
 import { Download, PanelBottom, PanelRight, RotateCcw, Ruler, Upload, Workflow } from 'lucide-react'
 import { useRef } from 'react'
-import { formatCount } from '../engine/format'
+import { formatBytes, formatCount } from '../engine/format'
+import { FLOAT_DTYPES } from '../engine/hyperparams'
+import { MEMORY_MODES } from '../engine/memory'
+import type { FloatDType } from '../engine/types'
 import { numLayers } from '../canvas/groupTemplates'
 import { startBounds } from '../canvas/nodeFactory'
 import { parseDocument, toDocument } from '../store/persistence'
-import { useCanvasStore } from '../store/useCanvasStore'
+import { selectMemory, useCanvasStore } from '../store/useCanvasStore'
+import { MODE_INFO } from './analysis/memoryText'
 import { CONNECTED_RULE } from './analysis/ParamsTab'
 import { HyperparamsMenu } from './HyperparamsMenu'
 
@@ -20,7 +24,7 @@ function ToolbarButton({ onClick, icon: Icon, label, active }: { onClick: () => 
       }`}
     >
       <Icon size={16} />
-      <span className="hidden lg:inline">{label}</span>
+      <span className="hidden whitespace-nowrap 2xl:inline">{label}</span>
     </button>
   )
 }
@@ -74,7 +78,7 @@ export function Toolbar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-3">
-      <div className="mr-4 flex items-center gap-2 font-semibold text-slate-800">
+      <div className="mr-4 flex shrink-0 items-center gap-2 font-semibold whitespace-nowrap text-slate-800">
         <Workflow size={18} className="text-indigo-600" />
         LLM Canvas
       </div>
@@ -82,8 +86,9 @@ export function Toolbar() {
       <HyperparamsMenu />
       <ToolbarButton icon={Ruler} label="Shapes on edges" active={showEdgeShapes} onClick={() => setShowEdgeShapes(!showEdgeShapes)} />
 
-      {/* Mode / memory totals arrive in Phase 6 (PLAN.md §2.5). */}
-      <div className="ml-3 hidden items-center gap-3 text-xs text-slate-500 md:flex">
+      <MemoryControls />
+
+      <div className="ml-3 hidden items-center gap-3 text-xs whitespace-nowrap text-slate-500 md:flex">
         <button
           type="button"
           onClick={() => openAnalysis('params')}
@@ -98,7 +103,7 @@ export function Toolbar() {
         <span title="num_layers = Transformer Blocks on the canvas">
           Layers <span className="font-semibold text-slate-700 tabular-nums">{layers}</span>
         </span>
-        <span className="text-slate-400">Mem —</span>
+        <MemoryChip />
       </div>
 
       <div className="ml-auto flex items-center gap-1">
@@ -122,5 +127,72 @@ export function Toolbar() {
         }}
       />
     </header>
+  )
+}
+
+/** Mode (Forward / Fwd+Bwd / Train), dtype and activation checkpointing: the memory knobs (R8.3). */
+function MemoryControls() {
+  const mode = useCanvasStore((s) => s.memoryMode)
+  const dtype = useCanvasStore((s) => s.hyperparams.dtype)
+  const checkpointing = useCanvasStore((s) => s.checkpointing)
+  const { setMemoryMode, setHyperparam, setCheckpointing } = useCanvasStore.getState()
+  return (
+    <div className="ml-2 flex items-center gap-2 border-l border-slate-200 pl-3 text-xs">
+      <div className="flex overflow-hidden rounded-md border border-slate-300" role="radiogroup" aria-label="Memory mode">
+        {MEMORY_MODES.map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={mode === m}
+            onClick={() => setMemoryMode(m)}
+            title={MODE_INFO[m].explain}
+            className={`px-2 py-1 font-medium transition ${mode === m ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+          >
+            {MODE_INFO[m].label}
+          </button>
+        ))}
+      </div>
+      <select
+        value={dtype}
+        onChange={(e) => setHyperparam('dtype', e.target.value as FloatDType)}
+        title="dtype of weights, gradients, optimizer state and activations (int64 token ids are always 8 bytes)"
+        className="rounded-md border border-slate-300 bg-white px-1 py-1 text-xs text-slate-700 outline-none focus:border-indigo-400"
+      >
+        {FLOAT_DTYPES.map((d) => (
+          <option key={d} value={d}>
+            {d}
+          </option>
+        ))}
+      </select>
+      <label
+        className={`flex items-center gap-1.5 ${mode === 'forward' ? 'text-slate-300' : 'text-slate-600'}`}
+        title={
+          mode === 'forward'
+            ? 'Only matters with a backward pass (Fwd+Bwd / Train)'
+            : 'Activation checkpointing (CS336 checkpoint_blocks): keep only each Transformer Block’s input and recompute the block during backward'
+        }
+      >
+        <input type="checkbox" checked={checkpointing} disabled={mode === 'forward'} onChange={(e) => setCheckpointing(e.target.checked)} className="accent-indigo-600" />
+        <span className="whitespace-nowrap">Act. checkpointing</span>
+      </label>
+    </div>
+  )
+}
+
+/** "Mem 1.51 GB" — click opens the Memory tab. */
+function MemoryChip() {
+  const total = useCanvasStore((s) => selectMemory(s).total)
+  const mode = useCanvasStore((s) => s.memoryMode)
+  const openAnalysis = useCanvasStore((s) => s.openAnalysis)
+  return (
+    <button
+      type="button"
+      onClick={() => openAnalysis('memory')}
+      className="-mx-1.5 rounded px-1.5 py-1 hover:bg-slate-100"
+      title={`Estimated memory for ${MODE_INFO[mode].label}: ${total.toLocaleString()} bytes.\nClick for the breakdown.`}
+    >
+      Mem <span className="font-semibold text-slate-700 tabular-nums">{formatBytes(total)}</span>
+    </button>
   )
 }

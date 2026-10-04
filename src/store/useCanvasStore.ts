@@ -5,10 +5,11 @@ import { createNode, newId } from '../canvas/nodeFactory'
 import type { AnnotationData, AppEdge, AppNode, GroupMode, PaletteItemId } from '../canvas/types'
 import { cs336Document } from '../defaults/cs336Graph'
 import { isProxyType } from '../engine/groups'
+import type { MemoryHighlightKey, MemoryMode } from '../engine/memory'
 import type { HighlightKey } from '../engine/params'
 import type { Hyperparams, ParamValue } from '../engine/types'
 import type { GroupType } from '../nodes/groups'
-import { inferCanvas, type CanvasInference } from './inference'
+import { inferCanvas, memoryFor, type CanvasInference } from './inference'
 import { loadFromStorage, saveToStorage, toDocument, type CanvasDocument } from './persistence'
 
 /** A clicked port: which node/port, and where on screen to show the popover. */
@@ -20,8 +21,11 @@ export interface PortPopover {
   y: number
 }
 
-/** Tabs of the bottom analysis panel (Phase 6 adds 'memory'). */
-export type AnalysisTab = 'params'
+/** Tabs of the bottom analysis panel. */
+export type AnalysisTab = 'params' | 'memory'
+
+/** What the analysis panel can highlight on the canvas: a param category / 'unconnected', or an activation category. */
+export type CanvasHighlight = HighlightKey | MemoryHighlightKey
 
 export interface CanvasState {
   nodes: AppNode[]
@@ -33,8 +37,13 @@ export interface CanvasState {
   drawerOpen: boolean
   analysisOpen: boolean
   analysisTab: AnalysisTab
-  /** Param category (or 'unconnected') highlighted on the canvas from the analysis panel; Esc clears it. */
-  highlight: HighlightKey | null
+  /** Param / activation category highlighted on the canvas from the analysis panel; Esc clears it. */
+  highlight: CanvasHighlight | null
+  /** Memory estimate settings (R8): mode and activation checkpointing (CS336 `checkpoint_blocks`). UI state, not saved. */
+  memoryMode: MemoryMode
+  checkpointing: boolean
+  /** Tint parts by the activation memory they hold. */
+  memoryHeat: boolean
   showEdgeShapes: boolean
   portPopover: PortPopover | null
   /** Short message shown briefly over the canvas (e.g. why a connection was refused). */
@@ -69,7 +78,10 @@ export interface CanvasState {
   setAnalysisOpen: (open: boolean) => void
   /** Open the analysis panel on a tab. */
   openAnalysis: (tab: AnalysisTab) => void
-  setHighlight: (key: HighlightKey | null) => void
+  setHighlight: (key: CanvasHighlight | null) => void
+  setMemoryMode: (mode: MemoryMode) => void
+  setCheckpointing: (on: boolean) => void
+  setMemoryHeat: (on: boolean) => void
   setShowEdgeShapes: (show: boolean) => void
   setPortPopover: (popover: PortPopover | null) => void
   showHint: (message: string) => void
@@ -104,6 +116,9 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     analysisOpen: false,
     analysisTab: 'params',
     highlight: null,
+    memoryMode: 'train',
+    checkpointing: false,
+    memoryHeat: false,
     showEdgeShapes: true,
     portPopover: null,
     hint: null,
@@ -220,6 +235,9 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     setAnalysisOpen: (open) => set({ analysisOpen: open }),
     openAnalysis: (tab) => set({ analysisOpen: true, analysisTab: tab }),
     setHighlight: (key) => set({ highlight: key }),
+    setMemoryMode: (mode) => set({ memoryMode: mode }),
+    setCheckpointing: (on) => set({ checkpointing: on }),
+    setMemoryHeat: (on) => set({ memoryHeat: on }),
     setShowEdgeShapes: (show) => set({ showEdgeShapes: show }),
     setPortPopover: (popover) => set({ portPopover: popover }),
     showHint: (message) => {
@@ -229,6 +247,9 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     },
   }
 })
+
+/** The memory estimate for the current graph + mode (memoised; engine/memory.ts). Use as a selector. */
+export const selectMemory = (s: CanvasState) => memoryFor(s.inference, s.hyperparams, s.memoryMode, s.checkpointing)
 
 /**
  * Deleting: a group's in/out proxies can't be deleted on their own (the group would lose its port),

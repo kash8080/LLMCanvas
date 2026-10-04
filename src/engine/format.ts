@@ -9,7 +9,7 @@ export function formatCount(n: number): string {
   return String(n)
 }
 
-/** Bytes in decimal units (as in PLAN.md §5 examples): 134217728 -> "134.2 MB". */
+/** Bytes in decimal units (as in PLAN.md §5 examples): 134217728 -> "134.2 MB", 1250721792 -> "1.25 GB". */
 export function formatBytes(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let value = bytes
@@ -18,5 +18,5 @@ export function formatBytes(bytes: number): string {
     value /= 1000
     i += 1
   }
-  return i === 0 ? `${value} B` : `${value.toFixed(1)} ${units[i]}`
+  return i === 0 ? `${value} B` : `${value.toFixed(i >= 3 ? 2 : 1)} ${units[i]}`
 }

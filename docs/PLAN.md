@@ -175,29 +175,49 @@ Sanity check (unit test): default params = 5,120,000 (emb) + 2 × 3,113,984 (blo
   (the per-part sum is always the real count).
 
 ## 5. Memory estimation (R8)
-Educational estimate, not allocator-exact. `bytes(dtype)` = 4 (fp32) / 2 (bf16/fp16). P = total params.
+Educational estimate, not allocator-exact (`src/engine/memory.ts`). `bytes(dtype)` = 4 (fp32) / 2 (bf16/fp16);
+int64 tensors (token ids, targets) are always 8. P = connected params (§4). Only **connected** parts count
+(`ParamReport.connectedIds`).
 
 | Component | Fwd (inference) | Fwd+Bwd | Train (AdamW) |
 |---|---|---|---|
 | Weights | P·b | P·b | P·b |
 | Gradients | – | P·b | P·b |
-| Optimizer (m, v) | – | – | 2·P·b (CS336 uses `zeros_like(p)`) |
-| Activations | peak live tensors only (max over nodes of inputs+output) | sum of tensors **saved for backward** | same as Fwd+Bwd |
-| Buffers | RoPE cos/sin per layer | same | same |
+| Optimizer (m, v) | – | – | 2·P·b (CS336 uses `zeros_like(p)` → same dtype as p) |
+| Activations | peak live set: max over parts of (unique inputs + outputs + internal temporaries such as the attention probs) | sum of tensors **saved for backward** | same as Fwd+Bwd |
+| Buffers | RoPE cos + sin, **once per attention group** (`2 · max_seq_len · d_head/2 · b`) | same | same |
 
-**Saved-for-backward** is declared per node type and counted **once per unique tensor** (e.g. the
-RMSNorm output feeding Q, K and V is stored once — a nice teaching point):
-Linear → its input; RMSNorm → input (+ rms); SiLU → input; Multiply → both inputs;
+RoPE buffers: CS336 builds one `RotaryPositionalEmbedding` per MHA and uses it for q and k; the canvas has two
+RoPE parts per attention group, so RoPE parts inside the same MHA group share one cos/sin pair (a RoPE outside an
+MHA group counts on its own). Default: 2 · 2 · 256 · 16 · 4 = 65,536 B.
+
+**Saved-for-backward** is declared per node type and counted **once per unique tensor**. A tensor is identified by
+its producing part + output port after skipping pass-throughs (group in/out proxies, Logits); internal tensors by the
+part that creates them. So the RMSNorm output feeding Q, K and V is stored once — a nice teaching point.
+Linear → its input; RMSNorm → input + rms; SiLU → input; Multiply → both inputs;
 SDPA → Q, K, V and the attention probabilities `B×H×T×T`; Softmax → output;
-Cross-Entropy → logits `B×T×V`; Add / reshape / RoPE → nothing.
+Cross-Entropy → logits `B×T×V` + targets; Embedding → token ids; Add / reshape / RoPE → nothing.
+Attribution: a tensor belongs to the part that **produced** it (internal ones: the part that saves them; Data Batch
+outputs: the part that saves them). Categories: Attention probs (B·H·T·T), Attention other, FFN, Norms, Embedding,
+Logits / loss, Residual / other. Rows = top-level group (Transformer Block) or the part itself.
 
-**Activation checkpointing toggle** (CS336 `checkpoint_blocks`): saved = each block's input
-(`L·B·T·d`) + one block's full saved activations (recomputed during backward).
+**Activation checkpointing toggle** (CS336 `checkpoint_blocks`, one `torch.utils.checkpoint` per block; ignored in
+Forward mode): tensors whose savers all sit inside one Transformer Block are dropped; each block's input is kept
+(`L·B·T·d`), and the largest block's saved tensors are added once (recomputed during backward; its input is not
+double-counted). Everything outside the blocks is saved as usual.
 
-**Breakdown views:** (a) by component (weights/grads/optimizer/activations), (b) activations by
-part — e.g. with defaults the attention probabilities (`32·16·256·256·4B ≈ 134 MB/layer`) and the
-logits (`32·256·10000·4B ≈ 328 MB`) dominate, which is exactly the "where to optimise" insight.
-Each node's drawer "Size" section shows its own contribution.
+Defaults (fp32, 2 blocks): Forward 410.4 MB (peak at lm_head: input + logits = 344.5 MB); Fwd+Bwd 1.38 GB
+(activations 1,250,721,792 B); Train 1.51 GB; Train + checkpointing 1.09 GB (activations 822,837,248 B).
+
+**Breakdown views (Memory tab):** (a) by component with formulas, (b) activations by category (click = highlight on
+canvas), by layer and the biggest tensors (click = focus) — with defaults the attention probabilities
+(`32·16·256·256·4B ≈ 134 MB/layer`) and the logits (`32·256·10000·4B ≈ 328 MB`) dominate, which is exactly the
+"where to optimise" insight. Each node's drawer "Size" section shows its own contribution. Mode and checkpointing are
+UI state (not saved in the document); dtype is a hyperparam (saved).
+
+Not modelled: allocator overhead / fragmentation, CUDA context, transient activation gradients, extra autograd
+intermediates of hand-written ops (CS336's SDPA/softmax/cross-entropy keep several B·H·T² / B·T·V temporaries in
+real PyTorch), fused kernels (FlashAttention), mixed-precision master weights.
 
 ---
 
@@ -243,10 +263,11 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [x] Per-node badge, analysis panel total + formula + category bar, click-to-highlight
       (+ per-layer list with click-to-focus, insights, connected-model rule, Analysis tabs ready for Memory)
 
-### Phase 6 — Memory estimation (R8)
-- [ ] `engine/memory` + tests
-- [ ] Mode / dtype / activation-checkpointing controls
-- [ ] Breakdown by component and by part; per-node contribution in drawer; optional "heat" tint on nodes by activation memory
+### Phase 6 — Memory estimation (R8) ✅
+- [x] `engine/memory` + tests
+- [x] Mode / dtype / activation-checkpointing controls (toolbar; Mem chip opens the Memory tab)
+- [x] Breakdown by component and by part; per-node contribution in drawer; optional "heat" tint on nodes by activation memory
+      (+ formulas, activations by category/layer, top tensors, "where to optimise" insights, category highlight)
 
 ### Deferred (not planned for now — user said skip)
 Undo/redo, drop-connection-to-quick-add menu, user-made visual frames, extra part variants

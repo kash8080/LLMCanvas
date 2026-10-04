@@ -1,22 +1,25 @@
 import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { formatCount } from '../engine/format'
-import { useCanvasStore, type AnalysisTab, type CanvasState } from '../store/useCanvasStore'
+import { formatBytes, formatCount } from '../engine/format'
+import { selectMemory, useCanvasStore, type AnalysisTab, type CanvasState } from '../store/useCanvasStore'
+import { MemoryTab } from './analysis/MemoryTab'
 import { ParamsTab } from './analysis/ParamsTab'
 
 /**
- * Tabs of the analysis panel. To add one (Phase 6: Memory): extend `AnalysisTab` in the store,
+ * Tabs of the analysis panel. To add one: extend `AnalysisTab` in the store,
  * add an entry here (label + short summary shown on the tab) and a component in `TAB_BODY`.
  */
 const TABS: { id: AnalysisTab; label: string; meta: (s: CanvasState) => string }[] = [
   { id: 'params', label: 'Parameters', meta: (s) => formatCount(s.inference.params.total) },
+  { id: 'memory', label: 'Memory', meta: (s) => formatBytes(selectMemory(s).total) },
 ]
 
 const TAB_BODY: Record<AnalysisTab, () => ReactNode> = {
   params: () => <ParamsTab />,
+  memory: () => <MemoryTab />,
 }
 
-/** Bottom panel (collapsible): parameter breakdown (Phase 5), memory (Phase 6). */
+/** Bottom panel (collapsible): parameter breakdown and memory estimate. */
 export function AnalysisPanel() {
   const open = useCanvasStore((s) => s.analysisOpen)
   const tab = useCanvasStore((s) => s.analysisTab)
@@ -44,7 +47,7 @@ export function AnalysisPanel() {
           {open ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
         </button>
       </div>
-      {open && <div className="h-72 overflow-y-auto border-t border-slate-100">{TAB_BODY[tab]()}</div>}
+      {open && <div className="@container h-72 overflow-y-auto border-t border-slate-100">{TAB_BODY[tab]()}</div>}
     </section>
   )
 }

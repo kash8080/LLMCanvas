@@ -2,7 +2,8 @@
 import type { AppEdge, AppNode, PartNode } from '../canvas/types'
 import { flattenGroups, GROUP_INPUT, GROUP_OUTPUT, isProxyType } from '../engine/groups'
 import { inferShapes } from '../engine/infer'
-import { accountParams, type ParamReport } from '../engine/params'
+import { estimateMemory, type MemoryInput, type MemoryMode, type MemoryReport } from '../engine/memory'
+import { accountParams, type GroupInfo, type ParamReport } from '../engine/params'
 import type { GraphModel, Hyperparams, InferenceResult, NodeStatus, Shape } from '../engine/types'
 import { GROUP_DEFS } from '../nodes/groups'
 import { nodeRegistry } from '../nodes/registry'
@@ -24,8 +25,11 @@ export interface GroupSummary {
   breakdown: { id: string; title: string; params: number }[]
 }
 
-/** Shapes + group summaries + parameter accounting (engine/params.ts: connected model, categories, layers). */
-export type CanvasInference = InferenceResult & { groups: Record<string, GroupSummary>; params: ParamReport }
+/**
+ * Shapes + group summaries + parameter accounting (engine/params.ts: connected model, categories, layers).
+ * `graph` (flattened) and `groupInfos` are kept for the memory estimate, which also depends on UI state (mode).
+ */
+export type CanvasInference = InferenceResult & { groups: Record<string, GroupSummary>; params: ParamReport; graph: GraphModel; groupInfos: GroupInfo[] }
 
 /** Group frames are not parts: only parts (incl. proxies) go to the engine, with their parentId. */
 export function toGraphModel(nodes: AppNode[], edges: Pick<AppEdge, 'id' | 'source' | 'target' | 'sourceHandle' | 'targetHandle'>[]): GraphModel {
@@ -47,7 +51,13 @@ export function inferGraph(nodes: AppNode[], edges: AppEdge[], hp: Hyperparams):
   const graph = flattenGroups(toGraphModel(nodes, edges))
   const result = inferShapes(graph, hp, nodeRegistry)
   const groups = nodes.flatMap((n) => (n.type === 'group' ? [{ id: n.id, type: n.data.groupType, ...(n.parentId ? { parentId: n.parentId } : {}) }] : []))
-  return { ...result, groups: summarizeGroups(nodes, result), params: accountParams({ graph, groups, inference: result, defs: nodeRegistry, hp }) }
+  return {
+    ...result,
+    groups: summarizeGroups(nodes, result),
+    params: accountParams({ graph, groups, inference: result, defs: nodeRegistry, hp }),
+    graph,
+    groupInfos: groups,
+  }
 }
 
 export function nodeTitle(n: AppNode): string {
@@ -114,4 +124,20 @@ export function inferCanvas(nodes: AppNode[], edges: AppEdge[], hp: Hyperparams)
   const result = inferGraph(nodes, edges, hp)
   last = { nodes, edges, hp, result }
   return result
+}
+
+/** Engine input for the memory estimate (engine/memory.ts). */
+export function memoryInput(inference: CanvasInference, hp: Hyperparams, mode: MemoryMode, checkpointing: boolean): MemoryInput {
+  return { graph: inference.graph, groups: inference.groupInfos, inference, params: inference.params, defs: nodeRegistry, hp, mode, checkpointing }
+}
+
+// Memo for the memory estimate: recomputed only when the inference, hyperparams, mode or checkpointing change.
+let lastMemory: { inference: CanvasInference; hp: Hyperparams; mode: MemoryMode; checkpointing: boolean; report: MemoryReport } | null = null
+
+export function memoryFor(inference: CanvasInference, hp: Hyperparams, mode: MemoryMode, checkpointing: boolean): MemoryReport {
+  const m = lastMemory
+  if (m && m.inference === inference && m.hp === hp && m.mode === mode && m.checkpointing === checkpointing) return m.report
+  const report = estimateMemory(memoryInput(inference, hp, mode, checkpointing))
+  lastMemory = { inference, hp, mode, checkpointing, report }
+  return report
 }
