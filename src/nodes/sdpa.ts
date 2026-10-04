@@ -38,13 +38,20 @@ export const sdpa: NodeDef = {
     { name: 'attention probs', which: 'internal', shape: { dims: [...q.dims.slice(0, -1), seq(k)], dtype: 'float' } },
   ],
   docs: {
-    overview: 'softmax(Q Kᵀ / √d_k + mask) V: every query position takes a weighted average of the value vectors, weighted by how well its query matches each key.',
+    overview:
+      'For every query position, scores all key positions with a dot product, turns the scores into probabilities with a softmax, and returns the probability-weighted average of the value vectors. Dividing by √d_k keeps the scores from growing with the head size. The causal mask hides future tokens so the model can’t peek at the token it has to predict.',
+    formula: ['Attention(Q, K, V) = softmax(Q Kᵀ / √d_k + M) V', 'Mᵢⱼ = 0 if j ≤ i, −∞ otherwise   (causal mask)'],
     pointsToRemember: [
-      'No parameters — all the weights live in the q/k/v/output projections.',
-      'The attention-probability matrix is B × H × T × T: memory grows with T², which is why long contexts are expensive.',
-      'Causal mask: position t only sees positions ≤ t (masked scores set to −∞ before softmax).',
+      'No parameters: all of attention’s weights live in the q/k/v/output projections.',
+      'Attention probs are B × H × T × T — quadratic in T (32·16·256·256 ≈ 33.5M values per layer with the defaults).',
+      'Causal mask prevents attending to future tokens: masked scores are set to −∞, so they get exactly 0 probability.',
+      'The softmax subtracts the row max before exp(), so it never overflows.',
+      'Without the 1/√d_k scale, dot products grow with d_k and the softmax saturates (tiny gradients).',
+      'Backward needs Q, K, V and the attention probabilities.',
     ],
-    formula: 'Attention(Q, K, V) = softmax(Q Kᵀ / √d_k) V',
-    cs336Ref: 'ScaledDotProductAttention.py',
+    paramHelp: {
+      causal: 'On: query i only sees keys j ≤ i (CS336 always uses it, via a torch.tril mask built in MultiHeadSelfAttention).',
+    },
+    cs336Ref: { file: 'ScaledDotProductAttention.py', symbol: 'scaled_dot_product_attention' },
   },
 }

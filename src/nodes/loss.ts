@@ -14,8 +14,15 @@ export const loss: NodeDef = {
   paramCount: NO_PARAMS,
   savedForBackward: NOTHING_SAVED,
   docs: {
-    overview: 'The scalar training objective. loss.backward() starts here and flows gradients back through every part above.',
-    pointsToRemember: ['Must be a scalar.', 'The optimizer (AdamW in CS336) then updates all parameters using those gradients.'],
-    cs336Ref: 'train.py',
+    overview:
+      'The scalar training objective. Calling loss.backward() here sends gradients back through every part above it; the optimizer (AdamW in CS336) then uses them to update all the weights. Nothing flows out of it.',
+    formula: ['θ ← AdamW(θ, ∂ℓ/∂θ)   for every weight tensor θ'],
+    pointsToRemember: [
+      'Must be a scalar (a rank-0 tensor).',
+      'Every gradient has the same shape as its weight, so training needs at least weights + gradients in memory.',
+      'AdamW keeps two extra tensors (m and v) per parameter: optimizer state = 2 × the weights.',
+      'Gradient clipping and the cosine LR schedule act on these gradients but don’t change any shapes.',
+    ],
+    cs336Ref: { file: 'train.py', symbol: 'train (loss.backward → gradient_clipping → optimizer.step)' },
   },
 }

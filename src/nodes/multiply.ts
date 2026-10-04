@@ -24,9 +24,16 @@ export const multiply: NodeDef = {
     { name: 'b', which: 'input', port: 'b', shape: b },
   ],
   docs: {
-    overview: 'Element-wise product of two same-shape tensors. In SwiGLU it gates W3·x with SiLU(W1·x).',
-    pointsToRemember: ['Both inputs must have the same shape.', 'Backward needs both inputs (d(a·b)/da = b and vice versa).'],
-    formula: 'out = a ⊙ b',
-    cs336Ref: 'SwiGLU.py',
+    overview:
+      'Element-wise (Hadamard) product of two tensors of the same shape. In SwiGLU it is the gate: SiLU(w1 x) decides, per hidden unit, how much of w3 x gets through.',
+    roles: { gate: 'gate: SiLU(w1 x) ⊙ w3 x, the “GLU” part of SwiGLU.' },
+    formula: ['out = a ⊙ b', 'SwiGLU gate: SiLU(W₁x) ⊙ W₃x'],
+    pointsToRemember: [
+      'Both inputs must have exactly the same shape (no broadcasting here).',
+      'No parameters, but backward saves both inputs (∂out/∂a = b, ∂out/∂b = a).',
+      'In SwiGLU both inputs are B × T × d_ff — the widest activations in the block.',
+      'Gating is why SwiGLU beats a plain ReLU/SiLU FFN at a similar parameter count.',
+    ],
+    cs336Ref: { file: 'SwiGLU.py', symbol: 'SwiGLU.forward (a * b)' },
   },
 }

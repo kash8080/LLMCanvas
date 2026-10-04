@@ -25,13 +25,25 @@ export const rmsnorm: NodeDef = {
     { name: 'rms', which: 'internal', shape: { dims: [...inputs[0].dims.slice(0, -1), { size: 1 }], dtype: 'float' } },
   ],
   docs: {
-    overview: 'Rescales each d_model-vector to unit root-mean-square, then multiplies by a learned gain g. No mean subtraction and no bias (unlike LayerNorm).',
+    overview:
+      'Rescales every d_model vector so its root-mean-square is 1, then multiplies it element-wise by a learned gain g. This keeps activations at a steady scale as they enter attention, the FFN and the LM head. Unlike LayerNorm there is no mean subtraction and no bias.',
+    roles: {
+      ln1: 'ln1: normalises the residual stream before attention.',
+      ln2: 'ln2: normalises the residual stream before the SwiGLU FFN.',
+      ln_final: 'ln_final: normalises the output of the last block before lm_head (needed because pre-norm leaves the stream un-normalised).',
+    },
+    formula: ['RMSNorm(a)ᵢ = aᵢ / RMS(a) · gᵢ', 'RMS(a) = √( (1/d_model) · Σⱼ aⱼ² + ε )'],
     pointsToRemember: [
-      'Shape is unchanged; only d_model parameters.',
-      'CS336 upcasts to float32 inside the norm to avoid overflow when squaring.',
-      'Pre-norm: applied before attention and before the FFN in each block, plus once at the end (ln_final).',
+      'Pre-norm: the norm is applied to the input of each sub-layer (ln1, ln2); the residual adds the un-normalised x.',
+      'One extra RMSNorm (ln_final) sits after the last block, before lm_head.',
+      'The input is upcast to float32 before squaring (avoids fp16/bf16 overflow), then cast back to its dtype.',
+      'ε = 1e-5 keeps the division safe when a vector is close to 0.',
+      'Only d_model params (the gain g, initialised to 1); the shape is unchanged.',
     ],
-    formula: 'RMSNorm(a)_i = a_i · g_i / sqrt(mean(a²) + eps)',
-    cs336Ref: 'RMSNorm.py',
+    paramHelp: {
+      d_model: 'Length of the last dim being normalised = length of the gain vector g (the only weights).',
+      eps: 'ε added inside the square root so we never divide by ~0. CS336 default 1e-5; not learned.',
+    },
+    cs336Ref: { file: 'RMSNorm.py', symbol: 'RMSNorm.forward' },
   },
 }

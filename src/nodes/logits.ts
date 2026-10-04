@@ -15,11 +15,15 @@ export const logits: NodeDef = {
   paramCount: NO_PARAMS,
   savedForBackward: NOTHING_SAVED,
   docs: {
-    overview: 'Marks the model output: one unnormalised score per vocabulary entry at every position (B × T × V). A pass-through.',
+    overview:
+      'Marks the model’s output: one unnormalised score per vocabulary entry at every position (B × T × vocab_size). TransformerLM.forward returns exactly this tensor; a softmax over the last dim would give the next-token distribution. This part is a labelled pass-through.',
+    formula: ['p(next = v | tokens ≤ t) = softmax(logits[b, t, :])ᵥ'],
     pointsToRemember: [
-      'TransformerLM.forward returns these logits; softmax turns them into next-token probabilities.',
-      'With the CS336 defaults the logits are one of the largest activations (32·256·10000 floats).',
+      'The model returns raw logits; the softmax is folded into the cross-entropy loss (more stable).',
+      'B × T × V is one of the largest activations: 32·256·10000 ≈ 81.9M values with the defaults.',
+      'Every position predicts its own next token; at generation time only the last position is used.',
+      'No parameters: the scores come from lm_head.',
     ],
-    cs336Ref: 'TransformerLM.py',
+    cs336Ref: { file: 'TransformerLM.py', symbol: 'TransformerLM.forward (return value)' },
   },
 }

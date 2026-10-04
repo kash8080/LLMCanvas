@@ -64,7 +64,7 @@ src/
     infer(inputs: Shape[], p, hp) => { outputs: Shape[], errors: string[] },
     paramCount(p, hp) => { total, tensors: [{name, shape}] },   // e.g. W_q: d_model × d_model
     savedForBackward(inputs, outputs, p, hp) => [{name, elements, which: "input0"|"output0"|"internal"}],
-    docs: { overview, formula?, pointsToRemember[], paramHelp{} , cs336Ref }
+    docs: { overview, roles?, formula?: string[], paramFormula?, pointsToRemember[], paramHelp?, cs336Ref?: {file, symbol} }
   }
   ```
 
@@ -223,10 +223,12 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [x] Zoom-based LOD (3 levels, thresholds 0.25 / 0.6) + per-group override; fixed frame size
 - [x] Default graph switched to grouped version
 
-### Phase 4 — Detail drawer (R4)
-- [ ] Drawer with sections: Overview, Parameters (editable, 🔗 binding), Shapes, Size, Points to remember, Formula
-- [ ] Docs content for every node type (from CS336 code + handout)
-- [ ] Empty-selection state = model summary
+### Phase 4 — Detail drawer (R4) ✅
+- [x] Drawer with sections: Overview, Parameters (editable, 🔗 binding), Shapes, Size, Points to remember, Formula
+      (+ header with status badge, errors on top, CS336 reference; collapsible sections). Size shows params only —
+      the per-part memory sub-section is a Phase 6 hook (`MemoryContribution` in `src/panels/drawer/SizeSection.tsx`).
+- [x] Docs content for every node type and group (from CS336 code + handout)
+- [x] Empty-selection state = model summary
 
 ### Phase 5 — Parameter accounting (R7)
 - [ ] `engine/params` + tests (22,696,448 default)

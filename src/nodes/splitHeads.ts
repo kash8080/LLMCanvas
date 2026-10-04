@@ -23,12 +23,16 @@ export const splitHeads: NodeDef = {
   paramCount: NO_PARAMS,
   savedForBackward: NOTHING_SAVED,
   docs: {
-    overview: 'Reshapes … × T × d_model into … × H × T × d_head (reshape, then swap the T and H axes) so each head attends independently.',
+    overview:
+      'Cuts each d_model vector into H chunks of d_head = d_model / H and moves the head axis in front of the sequence axis. Each head can then run attention independently on its own d_head-sized slice.',
+    formula: ['B × T × d_model → B × T × H × d_head → B × H × T × d_head', 'x.reshape(…, T, H, d_head).transpose(−3, −2)'],
     pointsToRemember: [
-      'No parameters and no saved activations: it is only a view/reshape.',
-      `d_model must be divisible by num_heads; d_head = d_model / H.`,
+      'd_model must be divisible by num_heads (d_head = 512 / 16 = 32 with the defaults).',
+      'Only a reshape + transpose: no parameters and nothing saved for backward.',
+      'More heads do not mean more weights: q/k/v projections stay d_model × d_model in total.',
+      'RoPE comes next and needs an even d_head, because it rotates pairs of dimensions.',
     ],
-    formula: 'x.reshape(…, T, H, d_head).transpose(-3, -2)',
-    cs336Ref: 'MultiHeadSelfAttention.py',
+    paramHelp: { num_heads: 'H: how many independent attention heads. d_model must be divisible by H.' },
+    cs336Ref: { file: 'MultiHeadSelfAttention.py', symbol: 'MultiHeadSelfAttention.forward (reshape + transpose)' },
   },
 }

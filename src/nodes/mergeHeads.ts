@@ -18,9 +18,15 @@ export const mergeHeads: NodeDef = {
   paramCount: NO_PARAMS,
   savedForBackward: NOTHING_SAVED,
   docs: {
-    overview: 'Undoes Split Heads: … × H × T × d_head → … × T × (H · d_head), concatenating the heads back into one d_model vector per token.',
-    pointsToRemember: ['Only a transpose + reshape: no parameters.', 'The output projection that follows mixes information across heads.'],
-    formula: 'x.transpose(-3, -2).reshape(…, T, H · d_head)',
-    cs336Ref: 'MultiHeadSelfAttention.py',
+    overview:
+      'Undoes Split Heads: moves the head axis back behind the sequence axis and concatenates the H head outputs into one d_model vector per token. The output projection that follows is what actually mixes information between heads.',
+    formula: ['B × H × T × d_head → B × T × H × d_head → B × T × d_model', 'x.transpose(−3, −2).reshape(…, T, H · d_head)'],
+    pointsToRemember: [
+      'Only a transpose + reshape: no parameters and nothing saved for backward.',
+      'Concatenation, not averaging: each head keeps its own d_head slice of the output vector.',
+      'After the transpose the tensor isn’t contiguous, so reshape has to copy it (a .view() would fail).',
+      'H · d_head equals d_model only when d_model divides evenly into heads.',
+    ],
+    cs336Ref: { file: 'MultiHeadSelfAttention.py', symbol: 'MultiHeadSelfAttention.forward (transpose + reshape)' },
   },
 }

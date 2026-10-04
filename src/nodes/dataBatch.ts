@@ -22,11 +22,20 @@ export const dataBatch: NodeDef = {
   paramCount: NO_PARAMS,
   savedForBackward: NOTHING_SAVED,
   docs: {
-    overview: 'A batch of B random windows of T tokens from the training data. targets are the same windows shifted one token to the right.',
+    overview:
+      'Samples B random windows of T consecutive token ids from the tokenized training data. targets is the same window shifted one position to the right, so every position has a “next token” to predict. This is where the batch size B and sequence length T enter the model.',
+    formula: ['s_b ~ Uniform(0, N − T)   (random start per row)', 'input_ids[b] = data[s_b : s_b + T]', 'targets[b]   = data[s_b + 1 : s_b + T + 1]'],
     pointsToRemember: [
-      'Both tensors are int64 token ids of shape B × T.',
-      'targets[i, t] = input_ids[i, t + 1]: the model predicts the next token at every position.',
+      'Both outputs are int64 token ids of shape B × T (8 bytes each, whatever the model dtype).',
+      'targets[b, t] = input_ids[b, t + 1]: one batch is B·T next-token prediction problems at once.',
+      'Start positions are sampled at random (with replacement), not by walking through the data in order.',
+      'seq_len must not exceed context_length: RoPE’s cos/sin tables only cover that many positions.',
+      'B and T scale every activation downstream, but never the number of weights.',
     ],
-    cs336Ref: 'DataLoading.py',
+    paramHelp: {
+      batch_size: 'B: independent sequences processed together. Scales activation memory linearly; weights are unaffected.',
+      seq_len: 'T: tokens per sequence. Follows context_length by default; attention memory grows with T².',
+    },
+    cs336Ref: { file: 'DataLoading.py', symbol: 'DataLoading.load' },
   },
 }

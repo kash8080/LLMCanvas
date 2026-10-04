@@ -20,9 +20,17 @@ export const softmax: NodeDef = {
   paramCount: NO_PARAMS,
   savedForBackward: ({ outputs }) => [{ name: 'output', which: 'output', port: 'out', shape: outputs[0] }],
   docs: {
-    overview: 'Turns scores into probabilities along one dim: exp(x_i − max) / Σ exp(x_j − max). Used inside attention.',
-    pointsToRemember: ['Subtracting the max first keeps exp() from overflowing.', 'Backward needs the output (softmax probabilities).'],
-    formula: 'softmax(x)_i = exp(x_i) / Σ_j exp(x_j)',
-    cs336Ref: 'Softmax.py',
+    overview:
+      'Turns a vector of arbitrary scores into probabilities: all positive and summing to 1 along one dimension. In the CS336 model it lives inside attention (normalising over the keys); the same idea appears inside cross-entropy.',
+    formula: ['softmax(x)ᵢ = exp(xᵢ − max x) / Σⱼ exp(xⱼ − max x)'],
+    pointsToRemember: [
+      'Subtracting the max doesn’t change the result but keeps exp() from overflowing (numerically stable).',
+      'Shape unchanged, no parameters.',
+      'Backward needs only the output: the softmax Jacobian is built from the probabilities themselves.',
+      'An input of −∞ becomes exactly 0 probability — that is how the causal mask works.',
+      'Already included in Scaled Dot-Product Attention; use this part only when building attention by hand.',
+    ],
+    paramHelp: { dim: 'Dimension to normalise over (−1 = last). In attention that is the keys axis.' },
+    cs336Ref: { file: 'Softmax.py', symbol: 'softmax' },
   },
 }

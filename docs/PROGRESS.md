@@ -189,3 +189,49 @@ node component, connection validation, default flat CS336 graph.
   fixed-frame trade-off (PLAN §7.2).
 
 **Next:** Phase 4 — detail drawer sections + docs content (parts *and* groups: `GROUP_DEFS[...].docs`).
+
+## 2026-10-04 — Session 5: Phase 4 (detail drawer)
+**Done**
+- `NodeDocs` (engine/types.ts) extended: `overview`, `roles?` (extra sentence keyed by a part's default title —
+  `q_proj`, `ln_final`, `w1`, `RoPE q`, `x + attn`…), `formula?: string[]` (lines), `paramFormula?` (groups),
+  `pointsToRemember[]`, `paramHelp?` (per param key, falls back to `ParamSchema.help`), `cs336Ref?: {file, symbol}`.
+- Docs rewritten for all 15 parts, both proxies and the 3 groups, checked against `cs336_basics` (pre-norm, RMSNorm
+  eps 1e-5 + fp32 upcast + gain init 1, Linear no bias + trunc-normal σ²=2/(in+out), Embedding trunc-normal N(0,1)
+  in [−3,3], interleaved RoPE pairs + non-persistent cos/sin buffers, SDPA −∞ mask + max-subtracted softmax,
+  SwiGLU w1/w3/w2 + d_ff ≈ 8/3·d rounded to 64, cross-entropy log-sum-exp).
+- Drawer (`src/panels/DetailDrawer.tsx` → `src/panels/drawer/*`), 380 px wide, header fixed, body scrolls:
+  - `ui.tsx`: `DrawerHeader` (colour chip, editable title, type name, ok/error/unknown badge, close), collapsible
+    `Section` (collapsed state per section id in the store → stays collapsed across selections), `ErrorBox`, `Notice`.
+  - Parts (`PartDetails.tsx`): Errors → Overview (+ role) → Formula → Parameters (🔗 bound / unlink / relink, help as
+    caption) → Shapes (port, symbolic, concrete, dtype, bytes) → Size → Points to remember → CS336 reference.
+  - Groups (`GroupDetails.tsx`): same order; "Display" (Auto/Open/Closed) sits where Parameters would be; Size has the
+    group's `paramFormula`, total and a per-child breakdown with bars (click a row = select + focus that child).
+  - Sticky / text box (`AnnotationDetails.tsx`): same header + "Appearance" section (bg, text colour, font size).
+  - Nothing selected (`ModelSummary.tsx`): params / layers / parts / problems, clickable problem list (select +
+    zoom to the part), read-only hyperparams + "Edit hyperparameters" (opens the toolbar popover), "How to use".
+  - Several selected: clickable list.
+- Store: `selectOnly(id)`, `hyperparamsOpen` (popover state lifted from `HyperparamsMenu`), `collapsedSections` +
+  `toggleSection`. `useFocusNode()` (drawer) = `selectOnly` + `setCenter` (parts, zoom ≥ 0.9 so Auto groups open) or
+  `fitBounds` (groups).
+- Test `src/nodes/docs.test.ts`: every registered part (incl. proxies) and group has an overview, ≥ 3 points, only
+  documents params it has, and (non-proxies) a CS336 ref. 73 tests pass; `pnpm build` passes.
+- Browser-checked at 1440×900: summary, Embedding, attn group → q_proj via breakdown, RoPE q, SDPA, ffn, Block 1,
+  Cross-Entropy, sticky note, d_model = 500 → problems list → click focuses `split q`, unknown-shape notice, section
+  collapse persisting across selections.
+
+**Layout notes**
+- Phase 6 hook: `MemoryContribution({ nodeId })` in `src/panels/drawer/SizeSection.tsx` is rendered at the end of
+  both `PartSizeSection` and `GroupSizeSection` and returns `null` for now. Fill it in (e.g. `<SubHeading>Memory</SubHeading>`
+  + saved-for-backward tensors / bytes for the current mode); the section header `meta` can also show bytes.
+- Phase 5: the part Size section derives its formula from the weight tensors' dim labels
+  (`params = d_model · d_model = 512 · 512 = 262,144`); groups use `GROUP_DEFS[t].docs.paramFormula`. The summary's
+  total params = sum over `inference.nodes` (same as the toolbar, i.e. includes stray unconnected parts).
+
+**Gotchas**
+- Built-in browser `computer` clicks use the *screenshot* coordinate frame (800×500 for a 1440×900 viewport), not CSS px:
+  divide `getBoundingClientRect()` values by 1.8.
+- Editing a `src/nodes/*` file during `pnpm dev` triggers a full reload (store module re-initialises) — selection is lost.
+- `useFocusNode` on a part hidden inside a collapsed group uses its declared size (`PART_WIDTH`, 60 px) since it was
+  never measured; a group in manual *Closed* mode stays closed, so the part is selected but not visible.
+
+**Next:** Phase 5 — parameter accounting (`engine/params` + tests, analysis panel total + formula + category bar).

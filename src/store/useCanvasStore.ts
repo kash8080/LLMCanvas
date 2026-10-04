@@ -32,6 +32,10 @@ export interface CanvasState {
   portPopover: PortPopover | null
   /** Short message shown briefly over the canvas (e.g. why a connection was refused). */
   hint: string | null
+  /** Toolbar Hyperparams popover (also opened from the drawer's model summary). */
+  hyperparamsOpen: boolean
+  /** Drawer sections the user collapsed, by section key (shared by every selection). */
+  collapsedSections: Record<string, boolean>
 
   // React Flow wiring
   onNodesChange: (changes: NodeChange<AppNode>[]) => void
@@ -51,6 +55,10 @@ export interface CanvasState {
   loadDocument: (doc: CanvasDocument) => void
   resetCanvas: () => void
   setDrawerOpen: (open: boolean) => void
+  /** Select exactly this node (deselects everything else) and open the drawer. */
+  selectOnly: (id: string) => void
+  setHyperparamsOpen: (open: boolean) => void
+  toggleSection: (key: string) => void
   setAnalysisOpen: (open: boolean) => void
   setShowEdgeShapes: (show: boolean) => void
   setPortPopover: (popover: PortPopover | null) => void
@@ -87,6 +95,8 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     showEdgeShapes: true,
     portPopover: null,
     hint: null,
+    hyperparamsOpen: false,
+    collapsedSections: {},
 
     onNodesChange: (changes) => commit({ nodes: applyNodeChanges(changes, get().nodes) }),
     onEdgesChange: (changes) => commit({ edges: applyEdgeChanges(changes, get().edges) }),
@@ -185,6 +195,16 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     },
     resetCanvas: () => get().loadDocument(cs336Document()),
     setDrawerOpen: (open) => set({ drawerOpen: open }),
+    selectOnly: (id) => {
+      const { nodes, edges } = get()
+      commit({
+        nodes: nodes.map((n) => (!!n.selected !== (n.id === id) ? { ...n, selected: n.id === id } : n)),
+        edges: edges.some((e) => e.selected) ? edges.map((e) => (e.selected ? { ...e, selected: false } : e)) : edges,
+      })
+      set({ drawerOpen: true })
+    },
+    setHyperparamsOpen: (open) => set({ hyperparamsOpen: open }),
+    toggleSection: (key) => set((s) => ({ collapsedSections: { ...s.collapsedSections, [key]: !s.collapsedSections[key] } })),
     setAnalysisOpen: (open) => set({ analysisOpen: open }),
     setShowEdgeShapes: (show) => set({ showEdgeShapes: show }),
     setPortPopover: (popover) => set({ portPopover: popover }),

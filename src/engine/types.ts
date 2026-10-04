@@ -109,11 +109,27 @@ export interface SavedContext {
   hp: Hyperparams
 }
 
+/** Where a part lives in the CS336 code: `cs336_basics/<file> · <symbol>`. */
+export interface Cs336Ref {
+  file: string
+  symbol: string
+}
+
+/** Learning content shown in the detail drawer (PLAN.md §2.1, R4). Plain text; unicode math is fine. */
 export interface NodeDocs {
+  /** 2–4 plain-English sentences: what it does and why it is in the model. */
   overview: string
+  /** Extra sentence for a well-known instance, keyed by its default title (e.g. `q_proj`, `ln_final`). */
+  roles?: Record<string, string>
+  /** Formula lines, rendered in monospace. */
+  formula?: string[]
+  /** How the parameter count is computed (groups; parts derive it from their weight tensors). */
+  paramFormula?: string
+  /** 3–6 key insights / common pitfalls. */
   pointsToRemember: string[]
-  formula?: string
-  cs336Ref?: string
+  /** Longer help per param key (falls back to `ParamSchema.help`). */
+  paramHelp?: Record<string, string>
+  cs336Ref?: Cs336Ref
 }
 
 /** Everything about one part type (one file per type in src/nodes/). */

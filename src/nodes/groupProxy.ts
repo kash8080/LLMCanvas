@@ -18,8 +18,12 @@ export const groupInput: NodeDef = {
   paramCount: NO_PARAMS,
   savedForBackward: NOTHING_SAVED,
   docs: {
-    overview: 'Where the tensor arriving at the group’s outer input port enters the group. A pass-through.',
-    pointsToRemember: ['Connect things from outside to the group’s top port, not to the parts inside.'],
+    overview: 'Where the tensor arriving at the group’s outer input port enters the group. A pass-through: its shape is what the group shows as “in”.',
+    pointsToRemember: [
+      'Connect things from outside to the group’s top port, not to the parts inside.',
+      'No parameters; it only forwards the tensor.',
+      'It is removed only together with its group.',
+    ],
   },
 }
 
@@ -34,8 +38,12 @@ export const groupOutput: NodeDef = {
   paramCount: NO_PARAMS,
   savedForBackward: NOTHING_SAVED,
   docs: {
-    overview: 'Whatever reaches this proxy leaves the group through its outer output port. A pass-through.',
-    pointsToRemember: ['Connect things outside to the group’s bottom port, not to the parts inside.'],
+    overview: 'Whatever reaches this proxy leaves the group through its outer output port. A pass-through: its shape is what the group shows as “out”.',
+    pointsToRemember: [
+      'Connect things outside to the group’s bottom port, not to the parts inside.',
+      'No parameters; it only forwards the tensor.',
+      'It is removed only together with its group.',
+    ],
   },
 }
 

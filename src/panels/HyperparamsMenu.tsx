@@ -1,5 +1,4 @@
 import { ChevronDown, SlidersHorizontal } from 'lucide-react'
-import { useState } from 'react'
 import { numLayers } from '../canvas/groupTemplates'
 import { FLOAT_DTYPES, HYPERPARAM_INFO, validateHyperparams } from '../engine/hyperparams'
 import type { FloatDType } from '../engine/types'
@@ -8,7 +7,8 @@ import { NumberField } from './NumberField'
 
 /** Toolbar "Hyperparams ▾" button + popover with the global hyperparameters (R6). */
 export function HyperparamsMenu() {
-  const [open, setOpen] = useState(false)
+  const open = useCanvasStore((s) => s.hyperparamsOpen)
+  const setOpen = useCanvasStore((s) => s.setHyperparamsOpen)
   const hp = useCanvasStore((s) => s.hyperparams)
   const setHyperparam = useCanvasStore((s) => s.setHyperparam)
   const layers = useCanvasStore((s) => numLayers(s.nodes))

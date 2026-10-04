@@ -27,13 +27,17 @@ export const crossEntropy: NodeDef = {
     { name: 'targets', which: 'input', port: 'targets', shape: t },
   ],
   docs: {
-    overview: 'Average negative log-probability of the correct next token: −log softmax(logits)[target], averaged over all B·T positions.',
+    overview:
+      'Measures how surprised the model is by the true next token: the negative log-probability it gave to the target, averaged over all B·T positions. Lower is better, and this single number is what training minimises.',
+    formula: ['ℓ = mean_{b,t} [ log Σᵥ exp(o_{b,t,v}) − o_{b,t,target} ]', 'stable form: shift o ← o − max(o) before exp'],
     pointsToRemember: [
-      'Computed stably as log-sum-exp after subtracting the max logit.',
-      'Output is a single scalar (mean over batch and sequence).',
-      'A uniform guess gives loss = ln(vocab_size) ≈ 9.21 for V = 10000.',
+      'Works on raw logits: log-softmax via log-sum-exp after subtracting the max logit — never softmax followed by log.',
+      'Output is a scalar: the mean over all B·T positions.',
+      'Sanity check: a uniform guess gives ℓ = ln(vocab_size) ≈ 9.21 for V = 10000.',
+      'targets must be int64 and match the logits’ shape without the vocab dim (B × T).',
+      'Perplexity = exp(ℓ).',
+      'Backward needs the logits: the gradient is (softmax(o) − one_hot(target)) / (B·T).',
     ],
-    formula: 'ℓ = mean_{b,t} [ logsumexp(o_{b,t}) − o_{b,t}[x_{b,t+1}] ]',
-    cs336Ref: 'CrossEntropy.py',
+    cs336Ref: { file: 'CrossEntropy.py', symbol: 'cross_entropy' },
   },
 }
