@@ -200,12 +200,12 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 ### Phase 0 — Docs ✅
 - [x] CLAUDE.md, REQUIREMENTS.md, PLAN.md, PROGRESS.md
 
-### Phase 1 — Scaffold & basic canvas (R1, R3)
-- [ ] Vite + React + TS + Tailwind + React Flow + Zustand + Vitest; `git init`
-- [ ] App shell layout (toolbar, palette, canvas, drawer, analysis panel placeholders)
-- [ ] Pan/zoom/fit/minimap; drag from palette; select/move/delete/duplicate
-- [ ] Sticky note & text box (resizable, colors, font size, inline edit)
-- [ ] Autosave to localStorage; export/import JSON
+### Phase 1 — Scaffold & basic canvas (R1, R3) ✅
+- [x] Vite + React + TS + Tailwind + React Flow + Zustand + Vitest; `git init`
+- [x] App shell layout (toolbar, palette, canvas, drawer, analysis panel placeholders)
+- [x] Pan/zoom/fit/minimap; drag from palette; select/move/delete/duplicate
+- [x] Sticky note & text box (resizable, colors, font size, inline edit)
+- [x] Autosave to localStorage; export/import JSON
 
 ### Phase 2 — Engine: node types + shape inference (R2, R6)
 - [ ] `engine/types`, `hyperparams`, `resolve`, `infer` + unit tests

@@ -38,4 +38,10 @@ Vite + React + TypeScript, React Flow (`@xyflow/react` v12), Zustand, Tailwind, 
 - Don't add libraries beyond the stack without a reason; prefer plain components.
 
 ## Commands
-(Filled in once Phase 1 scaffolds the project.)
+- `pnpm install` — install deps
+- `pnpm dev` — dev server at http://localhost:5173 (also `.claude/launch.json` → "dev")
+- `pnpm test` — run Vitest once (`pnpm test:watch` for watch mode); tests live next to code as `*.test.ts`
+- `pnpm typecheck` — `tsc` (noEmit)
+- `pnpm build` — typecheck + production build to `dist/`
+
+Saved canvas lives in `localStorage["llm-canvas:v1"]`; clear it (or use Toolbar → Reset) to get the default graph.
