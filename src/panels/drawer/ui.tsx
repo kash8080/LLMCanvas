@@ -1,10 +1,10 @@
 // Shared building blocks for the detail drawer: header, collapsible sections, badges.
-import { AlertTriangle, Check, ChevronRight, HelpCircle, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, HelpCircle, Trash2, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { NodeStatus } from '../../engine/types'
 import { useCanvasStore } from '../../store/useCanvasStore'
 
-/** Top of the drawer: colour chip, (editable) title, type name, status badge, close button. */
+/** Top of the drawer: colour chip, (editable) title, type name, status badge, delete + close buttons. */
 export function DrawerHeader({
   color,
   title,
@@ -12,6 +12,8 @@ export function DrawerHeader({
   onRename,
   subtitle,
   badge,
+  onDelete,
+  deleteTitle = 'Delete',
 }: {
   color: string
   title: string
@@ -21,6 +23,9 @@ export function DrawerHeader({
   onRename?: (title: string) => void
   subtitle: ReactNode
   badge?: ReactNode
+  /** Shows a trash button. `null` = shown disabled (e.g. a group's in/out pill), with `deleteTitle` as the reason. */
+  onDelete?: (() => void) | null
+  deleteTitle?: string
 }) {
   const setOpen = useCanvasStore((s) => s.setDrawerOpen)
   return (
@@ -43,6 +48,18 @@ export function DrawerHeader({
           {badge}
         </div>
       </div>
+      {onDelete !== undefined && (
+        <button
+          type="button"
+          onClick={onDelete ?? undefined}
+          disabled={onDelete === null}
+          title={deleteTitle}
+          aria-label={deleteTitle}
+          className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setOpen(false)}

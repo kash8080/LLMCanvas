@@ -12,11 +12,11 @@ import { useFocusNode } from './useFocusNode'
 
 const HOW_TO: string[] = [
   'Drag a part or a group (Transformer Block, attention, SwiGLU) from the palette onto the canvas.',
-  'Connect: drag from a green output (bottom) to a blue input (top), or drop onto a part’s body.',
+  'Connect: drag from a green output (bottom) to a blue input (top), or drop onto a part’s body. Drop on empty canvas to pick a new part that gets connected.',
   'Click a port dot to see the tensor shape, dtype and size flowing through it.',
   'Zoom in (pinch or ⌘ + scroll) to open the blocks, and further to open attention and SwiGLU.',
   'Click a part or group to read its docs and edit its parameters here.',
-  '⌘D duplicates the selection; Delete / Backspace removes it. Shift + drag box-selects.',
+  '⌘D duplicates the selection; Delete / Backspace (or the trash button in this panel) removes it; ⌘Z / ⇧⌘Z undo and redo. Shift + drag box-selects. Right-click anything for more.',
 ]
 
 /** "Title › path" of a node, e.g. "Block 1 › attn › q_proj". */

@@ -66,7 +66,8 @@ export function Palette() {
         </div>
       </div>
       <p className="mt-auto px-1 text-[11px] leading-snug text-slate-400">
-        Drag items onto the canvas. Shift+drag to box-select, ⌘D to duplicate, Delete to remove.
+        Drag items onto the canvas, or drop a connection on empty canvas to add a connected part. Shift+drag to box-select,
+        ⌘D to duplicate, Delete to remove, ⌘Z to undo, right-click for more.
       </p>
     </aside>
   )

@@ -105,7 +105,15 @@ Composite parts (**Transformer Block**, **Multi-Head Self-Attention**, **SwiGLU 
 - Click a port → small popover: symbolic shape, concrete shape, dtype, size in bytes.
 - Edge labels (toggleable): concrete shape, e.g. `32×256×512`.
 - Sticky note / text box: resizable, background color, text color, font size; edit by double-click.
-- Keyboard: Delete, Cmd+D duplicate, Space+drag pan. (Undo/redo deferred.)
+- Keyboard: Delete, Cmd+D duplicate, Space+drag pan, Cmd+Z / Shift+Cmd+Z (Ctrl+Y) undo / redo (not inside text inputs).
+- Removing: Delete/Backspace, trash button in the drawer header, right-click context menu (node / multi-selection / edge /
+  empty canvas), × on a selected edge. Proxies only go with their group; a group takes its children; a part takes its edges.
+- Undo/redo (`src/store/history.ts`, pure): whole-graph snapshots (nodes / edges / hyperparams), max 100, not persisted.
+  Every graph-changing store action calls `remember(key?)` first; same-key edits within 1 s merge (typing). Drags and
+  resizes record once when they end; deletions once per tick. UI state (selection, mode, panels) is not undoable.
+- Quick-add: dropping a connection on empty canvas opens a searchable menu of compatible items (`src/canvas/quickAdd.ts`)
+  at the drop point; the new part is created and connected in one undo step. On the empty area of the group the drag
+  started in, the part is created inside that group. Also "Add part here…" in the canvas context menu (no connection).
 
 ### 2.5 Layout of the app
 ```
@@ -270,9 +278,10 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
       (+ formulas, activations by category/layer, top tensors, "where to optimise" insights, category highlight)
 
 ### Phase 7 — Extras (approved 2026-10-05)
-- [ ] 7a. Removing items made obvious: Delete button in drawer header, right-click context menu (delete / duplicate / …), delete for edges too (Delete/Backspace already works)
-- [ ] 7a. Undo/redo (Cmd+Z / Shift+Cmd+Z + toolbar buttons) covering all graph edits
-- [ ] 7a. Drop a connection on empty canvas → quick-add menu that creates a part and auto-connects it
+- [x] 7a. Removing items made obvious: Delete button in drawer header, right-click context menu (delete / duplicate / …), delete for edges too (Delete/Backspace already works)
+      (+ × button on a selected edge; no separate floating selection toolbar — the context menu and the drawer's multi-selection header cover it)
+- [x] 7a. Undo/redo (Cmd+Z / Shift+Cmd+Z + toolbar buttons) covering all graph edits
+- [x] 7a. Drop a connection on empty canvas → quick-add menu that creates a part and auto-connects it
 - [ ] 7b. User-made visual frames (Miro-style, no ports): titled, coloured, resizable, moves what's inside
 - [ ] 7c. Extra part variants: LayerNorm, GELU, ReLU, non-gated FFN (CS336 `SiLU.py`) + docs; weight-tying toggle (lm_head shares embedding)
 - [ ] 7d. KV-cache estimate for generation (memory)

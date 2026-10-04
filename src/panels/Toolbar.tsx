@@ -1,5 +1,5 @@
 import { getViewportForBounds, useReactFlow, useStoreApi } from '@xyflow/react'
-import { Download, MoreHorizontal, PanelBottom, PanelRight, RotateCcw, Ruler, Upload, Workflow } from 'lucide-react'
+import { Download, MoreHorizontal, PanelBottom, PanelRight, Redo2, RotateCcw, Ruler, Undo2, Upload, Workflow } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { formatBytes, formatCount } from '../engine/format'
 import { FLOAT_DTYPES } from '../engine/hyperparams'
@@ -18,12 +18,17 @@ function ToolbarButton({
   icon: Icon,
   label,
   active,
+  disabled,
+  iconOnly,
   className = 'flex',
 }: {
   onClick: () => void
   icon: typeof Download
   label: string
   active?: boolean
+  disabled?: boolean
+  /** Never show the text label (tooltip only). */
+  iconOnly?: boolean
   className?: string
 }) {
   return (
@@ -31,13 +36,15 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       title={label}
-      className={`${className} shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition ${
+      aria-label={label}
+      disabled={disabled}
+      className={`${className} shrink-0 items-center gap-1.5 rounded-md ${iconOnly ? 'px-2' : 'px-2.5'} py-1.5 text-sm transition disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent ${
         active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
       }`}
     >
       <Icon size={16} />
       {/* Labels only where they all fit (they need ~1.7k px); below that the buttons are icons + tooltips. */}
-      <span className="hidden whitespace-nowrap min-[1800px]:inline">{label}</span>
+      {!iconOnly && <span className="hidden whitespace-nowrap min-[1800px]:inline">{label}</span>}
     </button>
   )
 }
@@ -96,6 +103,8 @@ export function Toolbar() {
         <span className="hidden xl:inline">LLM Canvas</span>
       </div>
 
+      <UndoRedo />
+      <div className="mx-1 h-5 w-px shrink-0 bg-slate-200" />
       <HyperparamsMenu />
       <ToolbarButton icon={Ruler} label="Shapes on edges" active={showEdgeShapes} onClick={() => setShowEdgeShapes(!showEdgeShapes)} />
 
@@ -148,6 +157,19 @@ export function Toolbar() {
         }}
       />
     </header>
+  )
+}
+
+/** Undo / redo buttons (icons only; ⌘Z / ⇧⌘Z also work on the canvas). */
+function UndoRedo() {
+  const canUndo = useCanvasStore((s) => s.history.past.length > 0)
+  const canRedo = useCanvasStore((s) => s.history.future.length > 0)
+  const { undo, redo } = useCanvasStore.getState()
+  return (
+    <>
+      <ToolbarButton iconOnly icon={Undo2} label="Undo (⌘Z)" disabled={!canUndo} onClick={undo} />
+      <ToolbarButton iconOnly icon={Redo2} label="Redo (⇧⌘Z)" disabled={!canRedo} onClick={redo} />
+    </>
   )
 }
 

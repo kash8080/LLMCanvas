@@ -1,4 +1,5 @@
 import type { AnnotationData, StickyNode, TextBoxNode } from '../../canvas/types'
+import { useDeleteElements } from '../../canvas/useDelete'
 import { useCanvasStore } from '../../store/useCanvasStore'
 import { DrawerBody, DrawerHeader, Section, SubHeading } from './ui'
 
@@ -8,6 +9,7 @@ const TEXT_SWATCHES = ['#111827', '#1f2937', '#64748b', '#dc2626', '#2563eb', '#
 /** Drawer for a sticky note / text box: background, text colour, font size. */
 export function AnnotationDetails({ node }: { node: StickyNode | TextBoxNode }) {
   const updateAnnotation = useCanvasStore((s) => s.updateAnnotation)
+  const deleteElements = useDeleteElements()
   const update = (patch: Partial<AnnotationData>) => updateAnnotation(node.id, patch)
   const { bgColor, textColor, fontSize, text } = node.data
   const label = node.type === 'sticky' ? 'Sticky note' : 'Text box'
@@ -19,6 +21,8 @@ export function AnnotationDetails({ node }: { node: StickyNode | TextBoxNode }) 
         color={bgColor === 'transparent' ? '#ffffff' : bgColor}
         title={firstLine && firstLine.length <= 60 ? firstLine : label}
         subtitle={`${label} · annotation`}
+        onDelete={() => deleteElements([node.id])}
+        deleteTitle={`Delete this ${label.toLowerCase()} (⌫)`}
       />
       <DrawerBody>
         <Section id="appearance" title="Appearance">

@@ -1,6 +1,7 @@
 import { LOD_ZOOM } from '../../canvas/lod'
 import { ModeToggle } from '../../canvas/nodes/GroupNode'
 import type { GroupNode } from '../../canvas/types'
+import { deleteLabel, useDeleteElements } from '../../canvas/useDelete'
 import { GROUP_DEFS } from '../../nodes/groups'
 import { useCanvasStore } from '../../store/useCanvasStore'
 import { FormulaSection, OverviewSection, PointsSection, ReferenceSection } from './DocsSections'
@@ -13,6 +14,8 @@ export function GroupDetails({ node }: { node: GroupNode }) {
   const def = GROUP_DEFS[node.data.groupType]
   const summary = useCanvasStore((s) => s.inference.groups[node.id])
   const setTitle = useCanvasStore((s) => s.setTitle)
+  const deleteText = useCanvasStore((s) => deleteLabel(node, s.nodes))
+  const deleteElements = useDeleteElements()
   const autoAt = Math.round((def.expandAtLod === 1 ? LOD_ZOOM.blocks : LOD_ZOOM.internals) * 100)
   const errors = summary?.errors ?? []
 
@@ -25,6 +28,8 @@ export function GroupDetails({ node }: { node: GroupNode }) {
         onRename={(t) => setTitle(node.id, t)}
         subtitle={`${def.label} · group`}
         badge={<StatusBadge status={summary?.status ?? 'unknown'} errorCount={errors.length} />}
+        onDelete={() => deleteElements([node.id])}
+        deleteTitle={`${deleteText} (⌫)`}
       />
       <DrawerBody>
         {errors.length > 0 && <ErrorBox errors={errors} />}

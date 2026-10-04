@@ -33,6 +33,8 @@ Vite + React + TypeScript, React Flow (`@xyflow/react` v12), Zustand, Tailwind, 
   and memory math live. It must stay unit-tested.
 - One node type = one file in `src/nodes/` holding everything about it (ports, params schema,
   `infer`, `paramCount`, `savedForBackward`, docs). Register it in `src/nodes/registry.ts`.
+- Every graph edit (nodes / edges / hyperparams) is a store action in `src/store/useCanvasStore.ts` that calls
+  `remember(key?)` before `commit(...)` so it is undoable (see PLAN §2.4); pure UI state doesn't.
 - Node params are either bound to a global hyperparam (`{bind: "d_model"}`) or overridden (`{value: n}`).
 - Shapes carry both a size and a symbolic label (`{size: 512, label: "d_model"}`).
 - Don't add libraries beyond the stack without a reason; prefer plain components.

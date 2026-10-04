@@ -12,18 +12,20 @@ import {
   type OnConnectEnd,
 } from '@xyflow/react'
 import { X } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatBytes, formatCount } from '../engine/format'
 import { isMemKey, type MemoryCategory } from '../engine/memory'
 import { GROUP_DEFS } from '../nodes/groups'
 import { CATEGORY_INFO, getNodeDef, highlightInfo } from '../nodes/registry'
 import { selectMemory, useCanvasStore, withoutLoneProxies, type CanvasState } from '../store/useCanvasStore'
 import { connectionProblem, connectionToBody } from './connect'
+import { ContextMenu, type ContextMenuState } from './ContextMenu'
 import { paletteItemSize } from './groupTemplates'
 import { applyLod, hideEdgesOfHiddenNodes, lodSelector } from './lod'
 import { isPaletteItemId, topNodes } from './nodeFactory'
 import { edgeTypes, nodeTypes } from './nodeTypes'
 import { PortPopover } from './PortPopover'
+import { QuickAddMenu } from './QuickAddMenu'
 import { DND_MIME, type AppEdge, type AppNode } from './types'
 
 const defaultEdgeOptions: DefaultEdgeOptions = {
@@ -37,10 +39,11 @@ const isValidConnection: IsValidConnection<AppEdge> = (c) => {
   return connectionProblem(nodes, edges, c) === null
 }
 
-// Refused drops on a port explain why; drops on a node body connect to its first free input.
+// Refused drops on a port explain why; drops on a node body connect to its first free input;
+// drops on empty canvas open the quick-add menu (create a part there, already connected).
 const onConnectEnd: OnConnectEnd = (event, state) => {
   if (state.isValid || !state.fromNode || !state.fromHandle) return
-  const { nodes, edges, onConnect, showHint } = useCanvasStore.getState()
+  const { nodes, edges, onConnect, showHint, openQuickAdd } = useCanvasStore.getState()
   const from = { nodeId: state.fromNode.id, handleId: state.fromHandle.id ?? null, type: state.fromHandle.type }
 
   // Snapped to a port of the opposite kind (output → input) but refused: say why.
@@ -57,9 +60,20 @@ const onConnectEnd: OnConnectEnd = (event, state) => {
   const point = 'changedTouches' in event ? event.changedTouches[0] : event
   const nodeEl = document.elementFromPoint(point.clientX, point.clientY)?.closest('.react-flow__node')
   const targetId = nodeEl?.getAttribute('data-id') ?? state.toNode?.id
-  if (!targetId || targetId === from.nodeId) return
-  // Let go on the empty area of the group the drag started in: nothing to connect, no hint.
-  if (nodes.find((n) => n.id === from.nodeId)?.parentId === targetId) return
+  const fromParent = nodes.find((n) => n.id === from.nodeId)?.parentId
+  const at = { x: point.clientX, y: point.clientY }
+  if (!targetId) {
+    // Empty canvas. A part inside a group can only connect inside it, so the new part can't go out here.
+    if (fromParent) showHint('Parts inside a group only connect to each other — let go inside the group to add a part there.')
+    else openQuickAdd({ ...at, from })
+    return
+  }
+  if (targetId === from.nodeId) return
+  // Let go on the empty area of the group the drag started in: add a part inside that group.
+  if (fromParent === targetId) {
+    openQuickAdd({ ...at, from, parentId: targetId })
+    return
+  }
   const r = connectionToBody(nodes, edges, from, targetId)
   if ('connection' in r) onConnect({ ...r.connection, sourceHandle: r.connection.sourceHandle ?? null, targetHandle: r.connection.targetHandle ?? null })
   else showHint(r.problem)
@@ -80,6 +94,7 @@ export function Canvas() {
   const addNode = useCanvasStore((s) => s.addNode)
   const setDrawerOpen = useCanvasStore((s) => s.setDrawerOpen)
   const { screenToFlowPosition } = useReactFlow()
+  const [menu, setMenu] = useState<ContextMenuState | null>(null)
 
   // Semantic zoom: hide the insides of collapsed groups. `lod` only changes when the zoom crosses
   // a threshold, so this doesn't recompute on every zoom step.
@@ -88,12 +103,20 @@ export function Canvas() {
   const visibleEdges = useMemo(() => hideEdgesOfHiddenNodes(edges, visibleNodes), [edges, visibleNodes])
 
   // Cmd/Ctrl+D duplicates the selection (window listener so it also overrides the browser bookmark shortcut).
+  // Cmd/Ctrl+Z undo, Shift+Cmd/Ctrl+Z or Ctrl+Y redo — not while typing (inputs keep their own undo).
   // Esc clears the parameter-category highlight (set from the analysis panel).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd' && !isTypingTarget(e.target)) {
+      const key = e.key.toLowerCase()
+      const mod = (e.metaKey || e.ctrlKey) && !isTypingTarget(e.target)
+      if (mod && key === 'd') {
         e.preventDefault()
         useCanvasStore.getState().duplicateSelection()
+      } else if (mod && (key === 'z' || key === 'y')) {
+        e.preventDefault()
+        const { undo, redo } = useCanvasStore.getState()
+        if (key === 'y' || e.shiftKey) redo()
+        else undo()
       } else if (e.key === 'Escape' && useCanvasStore.getState().highlight) {
         useCanvasStore.getState().setHighlight(null)
       }
@@ -133,6 +156,28 @@ export function Canvas() {
           return allowed
         }}
         onNodeClick={() => setDrawerOpen(true)}
+        // Right-click menus. On a node that's part of a multi-selection, the menu acts on the whole selection.
+        onNodeContextMenu={(e, node) => {
+          e.preventDefault()
+          const { nodes: all, edges: allEdges, selectNodes } = useCanvasStore.getState()
+          const count = all.filter((n) => n.selected).length + allEdges.filter((x) => x.selected).length
+          if (node.selected && count > 1) return setMenu({ x: e.clientX, y: e.clientY, target: { kind: 'selection' } })
+          selectNodes([node.id])
+          setMenu({ x: e.clientX, y: e.clientY, target: { kind: 'node', id: node.id } })
+        }}
+        onEdgeContextMenu={(e, edge) => {
+          e.preventDefault()
+          useCanvasStore.getState().selectNodes([], [edge.id])
+          setMenu({ x: e.clientX, y: e.clientY, target: { kind: 'edge', id: edge.id } })
+        }}
+        onSelectionContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY, target: { kind: 'selection' } })
+        }}
+        onPaneContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY, target: { kind: 'pane' } })
+        }}
         onDragOver={onDragOver}
         onDrop={onDrop}
         isValidConnection={isValidConnection}
@@ -165,6 +210,8 @@ export function Canvas() {
       )}
       <HighlightChip />
       <PortPopover />
+      <QuickAddMenu />
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </>
   )
 }

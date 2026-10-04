@@ -1,5 +1,6 @@
 import { applyEdgeChanges, applyNodeChanges, type Connection, type EdgeChange, type NodeChange, type XYPosition } from '@xyflow/react'
 import { create } from 'zustand'
+import { connectionToBody, type ConnectionLike } from '../canvas/connect'
 import { instantiateGroup, isGroupItem, nextBlockTitle } from '../canvas/groupTemplates'
 import { createNode, newId } from '../canvas/nodeFactory'
 import type { AnnotationData, AppEdge, AppNode, GroupMode, PaletteItemId } from '../canvas/types'
@@ -9,6 +10,7 @@ import type { MemoryHighlightKey, MemoryMode } from '../engine/memory'
 import type { HighlightKey } from '../engine/params'
 import type { Hyperparams, ParamValue } from '../engine/types'
 import type { GroupType } from '../nodes/groups'
+import { emptyHistory, record, redo, undo, type History } from './history'
 import { inferCanvas, memoryFor, type CanvasInference } from './inference'
 import { loadFromStorage, saveToStorage, toDocument, type CanvasDocument } from './persistence'
 
@@ -19,6 +21,31 @@ export interface PortPopover {
   kind: 'in' | 'out'
   x: number
   y: number
+}
+
+/** The end of a connection being dragged (React Flow handle): node, port, output ('source') or input ('target'). */
+export interface ConnectionFrom {
+  nodeId: string
+  handleId: string | null
+  type: 'source' | 'target'
+}
+
+/**
+ * The quick-add menu: opened at a screen point (client coords) when a connection is dropped on
+ * empty canvas (`from` set → the new part gets connected) or from the canvas context menu.
+ * `parentId`: the drop was on the empty area of this group frame → the new part goes inside it.
+ */
+export interface QuickAddState {
+  x: number
+  y: number
+  from: ConnectionFrom | null
+  parentId?: string
+}
+
+/** Options for `addNode`: create inside a group frame and/or connect to a dragged port. */
+export interface AddNodeOptions {
+  parentId?: string
+  connectFrom?: ConnectionFrom
 }
 
 /** Tabs of the bottom analysis panel. */
@@ -52,6 +79,9 @@ export interface CanvasState {
   hyperparamsOpen: boolean
   /** Drawer sections the user collapsed, by section key (shared by every selection). */
   collapsedSections: Record<string, boolean>
+  /** Undo / redo stacks of graph snapshots (not persisted). */
+  history: History<GraphSnapshot>
+  quickAdd: QuickAddState | null
 
   // React Flow wiring
   onNodesChange: (changes: NodeChange<AppNode>[]) => void
@@ -60,7 +90,8 @@ export interface CanvasState {
   onConnect: (connection: Connection) => void
 
   // Actions
-  addNode: (item: PaletteItemId, position: XYPosition) => void
+  /** Add a palette item (a group = its whole template); `position` is relative to `opts.parentId` if given. */
+  addNode: (item: PaletteItemId, position: XYPosition, opts?: AddNodeOptions) => void
   updateAnnotation: (id: string, patch: Partial<AnnotationData>) => void
   setPartParam: (id: string, key: string, value: ParamValue) => void
   /** Rename a part or a group ('' = back to the default label). */
@@ -71,8 +102,15 @@ export interface CanvasState {
   loadDocument: (doc: CanvasDocument) => void
   resetCanvas: () => void
   setDrawerOpen: (open: boolean) => void
-  /** Select exactly this node (deselects everything else) and open the drawer. */
-  selectOnly: (id: string) => void
+  /** Select exactly this node (deselects everything else) and open the drawer (unless `openDrawer` is false). */
+  selectOnly: (id: string, openDrawer?: boolean) => void
+  /** Select exactly these nodes and edges (everything else deselected). */
+  selectNodes: (ids: string[], edgeIds?: string[]) => void
+  undo: () => void
+  redo: () => void
+  clearHistory: () => void
+  openQuickAdd: (state: QuickAddState) => void
+  closeQuickAdd: () => void
   setHyperparamsOpen: (open: boolean) => void
   toggleSection: (key: string) => void
   setAnalysisOpen: (open: boolean) => void
@@ -91,6 +129,14 @@ const DUPLICATE_OFFSET = 30
 let hintTimer: ReturnType<typeof setTimeout> | undefined
 
 type GraphState = Pick<CanvasState, 'nodes' | 'edges' | 'hyperparams'>
+/** What undo / redo restores. */
+export type GraphSnapshot = GraphState
+
+/** Add edge `c`; an input takes one edge, so an existing edge into the same input is dropped. */
+function withEdge(edges: AppEdge[], c: ConnectionLike): AppEdge[] {
+  const kept = edges.filter((e) => !(e.target === c.target && (e.targetHandle ?? null) === (c.targetHandle ?? null)))
+  return [...kept, { ...c, sourceHandle: c.sourceHandle ?? null, targetHandle: c.targetHandle ?? null, id: newId('e') }]
+}
 
 function docToState(doc: CanvasDocument): GraphState {
   // structuredClone so the store never shares objects with the source document
@@ -110,6 +156,40 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
   const mapPart = (id: string, fn: (n: AppNode & { type: 'part' }) => AppNode) =>
     commit({ nodes: get().nodes.map((n) => (n.id === id && n.type === 'part' ? fn(n) : n)) })
 
+  // ---- Undo history (store/history.ts). Every undoable action calls `remember()` *before* changing the graph. ----
+  const snapshot = (): GraphSnapshot => {
+    const { nodes, edges, hyperparams } = get()
+    return { nodes, edges, hyperparams }
+  }
+  /** Record the current graph as an undo step. Same `key` in quick succession = one step (typing). */
+  const remember = (key?: string) => set({ history: record(get().history, snapshot(), { key }) })
+  // React Flow deletes edges and nodes in two separate change calls: record once per tick.
+  let removalRecorded = false
+  const rememberRemoval = () => {
+    if (removalRecorded) return
+    removalRecorded = true
+    queueMicrotask(() => (removalRecorded = false))
+    remember()
+  }
+  // A drag / resize emits many changes; keep the state from its start and record it when it ends.
+  let gestureStart: GraphSnapshot | null = null
+  const trackGesture = (changes: NodeChange<AppNode>[]) => {
+    const active = changes.some((c) => (c.type === 'position' && c.dragging) || (c.type === 'dimensions' && c.resizing))
+    const ended = changes.some((c) => (c.type === 'position' && c.dragging === false) || (c.type === 'dimensions' && c.resizing === false))
+    if (active && !gestureStart) gestureStart = snapshot()
+    if (ended && gestureStart) {
+      set({ history: record(get().history, gestureStart) })
+      gestureStart = null
+    }
+  }
+  const restore = (step: ((h: History<GraphSnapshot>, cur: GraphSnapshot) => { history: History<GraphSnapshot>; state: GraphSnapshot } | null)) => {
+    const r = step(get().history, snapshot())
+    if (!r) return
+    gestureStart = null
+    set({ history: r.history, portPopover: null, quickAdd: null })
+    commit(r.state)
+  }
+
   return {
     ...withInference(docToState(loadFromStorage() ?? cs336Document())),
     drawerOpen: true,
@@ -124,48 +204,86 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     hint: null,
     hyperparamsOpen: false,
     collapsedSections: {},
+    history: emptyHistory(),
+    quickAdd: null,
 
-    onNodesChange: (changes) => commit({ nodes: applyNodeChanges(changes, get().nodes) }),
-    onEdgesChange: (changes) => commit({ edges: applyEdgeChanges(changes, get().edges) }),
+    onNodesChange: (changes) => {
+      trackGesture(changes)
+      if (changes.some((c) => c.type === 'remove')) rememberRemoval()
+      commit({ nodes: applyNodeChanges(changes, get().nodes) })
+    },
+    onEdgesChange: (changes) => {
+      if (changes.some((c) => c.type === 'remove')) rememberRemoval()
+      commit({ edges: applyEdgeChanges(changes, get().edges) })
+    },
     onConnect: (c) => {
-      const kept = get().edges.filter((e) => !(e.target === c.target && (e.targetHandle ?? null) === (c.targetHandle ?? null)))
-      commit({ edges: [...kept, { ...c, id: newId('e') }] })
+      remember()
+      commit({ edges: withEdge(get().edges, c) })
     },
 
-    addNode: (item, position) => {
+    addNode: (item, position, opts = {}) => {
+      remember()
       const { nodes, edges } = get()
       const deselected = nodes.map((n) => (n.selected ? { ...n, selected: false } : n))
+      const edgesOff = edges.map((e) => (e.selected ? { ...e, selected: false } : e))
+      let added: AppNode[]
+      let nextEdges: AppEdge[] = edgesOff
       if (isGroupItem(item)) {
         // A whole template: frame + children + internal edges; only the frame is selected.
         const built = instantiateGroup(item.slice(6) as GroupType, position, nodes)
         const [frame, ...children] = built.nodes
-        commit({ nodes: [...deselected, { ...frame, selected: true }, ...children], edges: [...edges, ...built.edges] })
+        added = [{ ...frame, selected: true }, ...children]
+        nextEdges = [...edgesOff, ...built.edges]
       } else {
-        commit({ nodes: [...deselected, { ...createNode(item, position), selected: true }] })
+        const node = { ...createNode(item, position), selected: true } as AppNode
+        added = [opts.parentId ? ({ ...node, parentId: opts.parentId, extent: 'parent' } as AppNode) : node]
       }
-      set({ drawerOpen: true })
+      const nextNodes = [...deselected, ...added]
+      if (opts.connectFrom) {
+        const r = connectionToBody(nextNodes, nextEdges, opts.connectFrom, added[0].id)
+        if ('connection' in r) nextEdges = withEdge(nextEdges, r.connection)
+        else get().showHint(r.problem)
+      }
+      commit({ nodes: nextNodes, edges: nextEdges })
+      set({ drawerOpen: true, quickAdd: null })
     },
 
-    updateAnnotation: (id, patch) =>
+    updateAnnotation: (id, patch) => {
+      remember(`annot:${id}:${Object.keys(patch).sort().join(',')}`)
       commit({
         nodes: get().nodes.map((n) =>
           n.id === id && (n.type === 'sticky' || n.type === 'textbox') ? { ...n, data: { ...n.data, ...patch } } : n,
         ),
-      }),
+      })
+    },
 
-    setPartParam: (id, key, value) => mapPart(id, (n) => ({ ...n, data: { ...n.data, params: { ...n.data.params, [key]: value } } })),
+    setPartParam: (id, key, value) => {
+      // Typing a local value commits on every valid keystroke: one undo step per field edit.
+      remember(`param:${id}:${key}:${'bind' in value ? 'bind' : 'value'}`)
+      mapPart(id, (n) => ({ ...n, data: { ...n.data, params: { ...n.data.params, [key]: value } } }))
+    },
 
-    setTitle: (id, title) =>
+    setTitle: (id, title) => {
+      remember(`title:${id}`)
       commit({
         nodes: get().nodes.map((n) =>
           n.id === id && (n.type === 'part' || n.type === 'group') ? ({ ...n, data: { ...n.data, title: title || undefined } } as AppNode) : n,
         ),
-      }),
+      })
+    },
 
-    setGroupMode: (id, mode) =>
-      commit({ nodes: get().nodes.map((n) => (n.id === id && n.type === 'group' ? { ...n, data: { ...n.data, mode } } : n)) }),
+    setGroupMode: (id, mode) => {
+      const group = get().nodes.find((n) => n.id === id)
+      if (group?.type !== 'group' || group.data.mode === mode) return
+      remember()
+      commit({ nodes: get().nodes.map((n) => (n.id === id && n.type === 'group' ? { ...n, data: { ...n.data, mode } } : n)) })
+    },
 
-    setHyperparam: (key, value) => commit({ hyperparams: { ...get().hyperparams, [key]: value } }),
+    setHyperparam: (key, value) => {
+      if (get().hyperparams[key] === value) return
+      remember(`hp:${key}`)
+      commit({ hyperparams: { ...get().hyperparams, [key]: value } })
+    },
 
     duplicateSelection: () => {
       const { nodes, edges } = get()
@@ -178,6 +296,7 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
       for (const n of nodes) if (selectedIds.has(n.id) || (n.parentId && toCopy.has(n.parentId))) toCopy.add(n.id)
       const copied = nodes.filter((n) => toCopy.has(n.id) && !(n.type === 'part' && isProxyType(n.data.partType) && !toCopy.has(n.parentId!)))
       if (copied.length === 0) return
+      remember()
 
       // Groups are big: put their copy beside the original instead of overlapping it.
       const groupWidths = copied.filter((n) => n.type === 'group' && !(n.parentId && toCopy.has(n.parentId))).map((n) => n.width ?? 0)
@@ -217,19 +336,28 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     },
 
     loadDocument: (doc) => {
+      remember()
       commit(docToState(doc))
-      set({ portPopover: null })
+      set({ portPopover: null, quickAdd: null })
     },
     resetCanvas: () => get().loadDocument(cs336Document()),
     setDrawerOpen: (open) => set({ drawerOpen: open }),
-    selectOnly: (id) => {
-      const { nodes, edges } = get()
-      commit({
-        nodes: nodes.map((n) => (!!n.selected !== (n.id === id) ? { ...n, selected: n.id === id } : n)),
-        edges: edges.some((e) => e.selected) ? edges.map((e) => (e.selected ? { ...e, selected: false } : e)) : edges,
-      })
-      set({ drawerOpen: true })
+    selectOnly: (id, openDrawer = true) => {
+      get().selectNodes([id])
+      if (openDrawer) set({ drawerOpen: true })
     },
+    selectNodes: (ids, edgeIds = []) => {
+      const { nodes, edges } = get()
+      const want = new Set([...ids, ...edgeIds])
+      const toggle = <T extends { id: string; selected?: boolean }>(xs: T[]) =>
+        xs.some((x) => !!x.selected !== want.has(x.id)) ? xs.map((x) => (!!x.selected !== want.has(x.id) ? { ...x, selected: want.has(x.id) } : x)) : xs
+      commit({ nodes: toggle(nodes), edges: toggle(edges) })
+    },
+    undo: () => restore(undo),
+    redo: () => restore(redo),
+    clearHistory: () => set({ history: emptyHistory() }),
+    openQuickAdd: (state) => set({ quickAdd: state, portPopover: null }),
+    closeQuickAdd: () => set({ quickAdd: null }),
     setHyperparamsOpen: (open) => set({ hyperparamsOpen: open }),
     toggleSection: (key) => set((s) => ({ collapsedSections: { ...s.collapsedSections, [key]: !s.collapsedSections[key] } })),
     setAnalysisOpen: (open) => set({ analysisOpen: open }),

@@ -1,5 +1,6 @@
 import { Link2, Unlink } from 'lucide-react'
 import type { PartNode } from '../../canvas/types'
+import { isLoneProxy, useDeleteElements } from '../../canvas/useDelete'
 import { bindSymbol } from '../../engine/hyperparams'
 import { isBound } from '../../engine/resolve'
 import type { ParamSchema, ParamValue, ResolvedParam } from '../../engine/types'
@@ -16,6 +17,7 @@ export function PartDetails({ node }: { node: PartNode }) {
   const def = getNodeDef(node.data.partType)
   const result = useCanvasStore((s) => s.inference.nodes[node.id])
   const setTitle = useCanvasStore((s) => s.setTitle)
+  const deleteElements = useDeleteElements()
   if (!def || !result) return <p className="p-4 text-sm text-red-600">Unknown part type “{node.data.partType}”.</p>
 
   const cat = CATEGORY_INFO[def.category]
@@ -30,6 +32,8 @@ export function PartDetails({ node }: { node: PartNode }) {
         onRename={(t) => setTitle(node.id, t)}
         subtitle={`${def.label} · ${cat.label}`}
         badge={<StatusBadge status={result.status} errorCount={result.errors.length} />}
+        onDelete={isLoneProxy(node) ? null : () => deleteElements([node.id])}
+        deleteTitle={isLoneProxy(node) ? 'A group’s in/out pill is removed together with its group' : 'Delete this part and its connections (⌫)'}
       />
       <DrawerBody>
         {result.status === 'error' && <ErrorBox errors={result.errors} />}

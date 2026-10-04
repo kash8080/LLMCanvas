@@ -362,3 +362,62 @@ user frames, more part variants, KV-cache estimate), or persisting mode/checkpoi
 **Gotchas**
 - Don't put `overflow-hidden` on the `<header>` itself: the Hyperparams and ⋯ popovers are absolutely positioned inside it.
 - Toolbar width budget: compact ≈ 820 px, `xl` ≈ 1180 px, with labels ≈ 1690 px. Re-check when adding toolbar items.
+
+## 2026-10-05 — Session 9: Phase 7a (removing items, undo/redo, quick-add)
+**Done**
+- **Undo/redo**: `src/store/history.ts` (pure: `record` / `undo` / `redo`, cap 100, same-key coalescing with a sliding
+  1 s window, redo cleared by a new edit, no coalescing across an undo). The store keeps `history` (not persisted) and
+  snapshots `{nodes, edges, hyperparams}` *before* each edit via `remember(key?)`. Keys: `title:<id>`,
+  `param:<id>:<key>:bind|value`, `hp:<key>`, `annot:<id>:<fields>` (typing → one step). Drags / NodeResizer: the state at
+  the first `dragging:true` / `resizing:true` change is recorded at the `dragging:false` / `resizing:false` change.
+  Deletions: React Flow sends edge removes and node removes in two calls → recorded once per microtask. Covered: add,
+  delete, duplicate, connect / replace / delete edges, params (incl. bind/unbind), titles, annotation text & style,
+  group mode, hyperparams (incl. toolbar dtype), moves, resizes, reset / import. `setGroupMode` / `setHyperparam`
+  skip no-op changes. Selection, panels, memory mode / checkpointing are not undoable.
+  Keys (Canvas window listener): ⌘/Ctrl+Z, ⇧⌘/Ctrl+Z, Ctrl/⌘+Y — ignored while focus is in an input/textarea/select.
+  Toolbar: icon-only Undo / Redo (disabled when empty) after the logo.
+- **Removing**: `src/canvas/useDelete.ts` (`useDeleteElements` = React Flow `deleteElements`, so `onBeforeDelete` keeps
+  lone proxies + shows the hint, groups take their children, parts their edges; `deleteLabel` "Delete group (20 parts)").
+  Drawer header trash button (`DrawerHeader onDelete`; `null` = disabled, used for proxies) for parts, groups, sticky /
+  text boxes and the multi-selection header (also deletes selected edges). Edges: selected = indigo + label tint + a ×
+  under the label (counter-scaled with `1/zoom` so it stays 20 px when zoomed out). The drawer shows nothing for edges
+  (skipped, as planned).
+- **Context menu** (`src/canvas/ContextMenu.tsx`, state local to Canvas): node (title, group Display toggle, Show details,
+  Duplicate, Delete / Delete group (N parts)), proxy pill (Select its group, Delete disabled), edge ("A → B", Delete
+  connection), multi-selection / selection box (Duplicate N, Delete N items incl. edges), empty canvas (Add part here…,
+  Select all top-level, Fit view, Undo, Redo). Right-click selects the node / edge unless it's part of a multi-selection.
+  Closes on Esc, click outside, wheel, right-click elsewhere.
+- **Quick-add** (`src/canvas/quickAdd.ts` pure + `QuickAddMenu.tsx`; store `quickAdd` state + `openQuickAdd`):
+  `onConnectEnd` on empty canvas opens it at the drop point. Items: from an output → things with an input (no Data
+  Batch) + the 3 groups; from an input → things with an output (no Loss) + groups; from the context menu → everything
+  + sticky / text box. Search (all words, label-prefix first), ↑/↓, Enter = first/highlighted, Esc / click outside.
+  `addNode(item, pos, {parentId?, connectFrom?})` creates + connects in one undo step via `connectionToBody` (from an
+  output → first free input; from an input → first output, replacing that input's old edge). Placement puts the
+  connected port at the drop point. Dropping on the empty area of the group the drag started in creates the part
+  *inside* that group (position made relative with `getInternalNode(parent).internals.positionAbsolute`); dropping on
+  empty canvas from a part inside a group shows a hint instead (it couldn't connect).
+- Store: `selectNodes(ids, edgeIds?)`, `selectOnly(id, openDrawer?)`, `undo` / `redo` / `clearHistory`, `withEdge` helper
+  shared by `onConnect` and quick-add. Palette footer + summary "How to use" mention right-click / undo / quick-add.
+- Tests: `history.test.ts` (5), `quickAdd.test.ts` (6), `undo.test.ts` (7: mixed add → connect → typed param → drag →
+  delete Block 2, undo/redo all with inference checks; typing coalescing; mode / annotation / duplicate / reset;
+  resize gesture; redo cleared; quick-add from output / input / inside a group). 122 tests pass; `pnpm build` passes.
+- Browser-checked at 1440×900: quick-add from embed's output (search "rms" + Enter) and from an input (↓↓↓ Enter,
+  replaced edge), inside Block 1 (SiLU created as a child, connected from ln1), Esc / click outside cancel; ⌘Z / ⇧⌘Z /
+  Ctrl+Y; drag = 1 step; typed param = 1 step and ⌘Z inside the input is left alone; context-menu "Delete group (20 parts)"
+  = 1 step; toolbar Undo ×5 back to 16,468,480 / 66 nodes with b1 = 3,113,984; edge select + × / Backspace / right-click;
+  pane menu "Add part here…" → sticky; drawer trash on a sticky; multi-selection "Delete 2 items" + undo; proxy menu.
+  Toolbar: `scrollWidth === clientWidth`, nothing off-screen, Params/Mem not clipped at 1024, 1280 (≈16 px spare), 1440,
+  1536, 1800. User's saved canvas backed up and restored.
+
+**Gotchas**
+- To make a new edit undoable (7b–7d): do it in a store action and call `remember()` (or `remember('<field>:<id>')` for
+  something typed / dragged by a slider) before `commit()`. Don't call `commit` for graph changes from components.
+  Gestures that stream changes through `onNodesChange` should carry React Flow's `dragging` / `resizing` flags (they do
+  for drag and NodeResizer); from `onNodesChange` / `onEdgesChange` only removals and those flagged gestures are recorded.
+- Snapshots include `selected`, so undo also restores what was selected then (e.g. undoing a delete reselects it).
+- The ContextMenu / QuickAdd use the same backdrop pattern as the other popovers (`fixed inset-0 z-40`).
+- Toolbar width budget at 1280 is now only ~16 px — re-measure before adding anything there.
+- Stale console errors from synthetic ref-based clicks (`nodrag … reading 'document'`) are harmless (Session 6 note).
+
+**Next:** 7b — user-made visual frames (Miro-style, titled, coloured, resizable, move what's inside). Frames should be a
+new node kind; make their create / move / resize / rename / recolour go through store actions with `remember()`.

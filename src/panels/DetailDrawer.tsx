@@ -1,5 +1,6 @@
 import { useShallow } from 'zustand/react/shallow'
 import type { AppNode } from '../canvas/types'
+import { useDeleteElements } from '../canvas/useDelete'
 import { nodeTitle } from '../store/inference'
 import { useCanvasStore } from '../store/useCanvasStore'
 import { AnnotationDetails } from './drawer/AnnotationDetails'
@@ -36,9 +37,17 @@ function NodeDetails({ node }: { node: AppNode }) {
 
 function MultiSelection({ nodes }: { nodes: AppNode[] }) {
   const focus = useFocusNode()
+  const deleteElements = useDeleteElements()
+  const selectedEdges = useCanvasStore(useShallow((s) => s.edges.filter((e) => e.selected).map((e) => e.id)))
   return (
     <>
-      <DrawerHeader color="#94a3b8" title={`${nodes.length} items selected`} subtitle="⌘D duplicates them, Delete removes them" />
+      <DrawerHeader
+        color="#94a3b8"
+        title={`${nodes.length} items selected`}
+        subtitle="⌘D duplicates them, Delete removes them, right-click for more"
+        onDelete={() => deleteElements(nodes.map((n) => n.id), selectedEdges)}
+        deleteTitle={`Delete ${nodes.length} items (⌫)`}
+      />
       <DrawerBody>
         <Section id="selection" title="Selection">
           <ul className="space-y-0.5">
