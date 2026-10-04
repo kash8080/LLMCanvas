@@ -343,3 +343,22 @@ node component, connection validation, default flat CS336 graph.
 
 **Next:** all planned phases complete — candidates from the Deferred list (undo/redo, drop-connection quick-add,
 user frames, more part variants, KV-cache estimate), or persisting mode/checkpointing in the document.
+
+## 2026-10-05 — Session 8: polish — toolbar overflow fix
+**Done**
+- Bug: at ~1009 px wide the toolbar was ~1215 px, so Export/Import/Reset/Analysis/Details were cut off and the whole
+  document scrolled sideways (clicking a chip shifted the app left).
+- The page can no longer scroll: `html, body { overflow: hidden }` in `index.css`; App root is `h-full w-full overflow-hidden`
+  (was `h-screen w-screen` — `100vw` includes the scrollbar width).
+- Toolbar compacts below `xl` (1280): logo and "Hyperparams" show icon only (tooltips), "Act. checkpointing" → "Ckpt",
+  Export / Import / Reset move into a "⋯" `MoreMenu` (same backdrop pattern as the Hyperparams popover). The Layers stat
+  only shows at ≥ `2xl`. Button text labels now need ≥ 1800 px (`min-[1800px]`) — at `2xl` (1536) they overflowed too.
+  The Params/Mem cluster is `min-w-0 overflow-hidden`, so below ~850 px it clips instead of pushing the right-hand buttons off.
+- Detail drawer is 340 px below `xl` (380 px from `xl`), giving the canvas more room at 1024.
+- Browser-checked: `scrollWidth === clientWidth`, no overflow / overlapping / off-screen toolbar controls at 900, 1024×768,
+  1280×800, 1440×900, 1536 and 1800; ⋯ menu, Hyperparams popover, Mem chip → Memory tab work at 1024×768 with the drawer
+  and Analysis panel open (canvas ≈ 390×400 px there — usable, tight). 104 tests pass; `pnpm build` passes.
+
+**Gotchas**
+- Don't put `overflow-hidden` on the `<header>` itself: the Hyperparams and ⋯ popovers are absolutely positioned inside it.
+- Toolbar width budget: compact ≈ 820 px, `xl` ≈ 1180 px, with labels ≈ 1690 px. Re-check when adding toolbar items.

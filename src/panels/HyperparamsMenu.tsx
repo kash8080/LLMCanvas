@@ -16,16 +16,17 @@ export function HyperparamsMenu() {
   const dHead = hp.d_model / hp.num_heads
 
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition ${
+        title="Global hyperparameters"
+        className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap transition ${
           open ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
         }`}
       >
         <SlidersHorizontal size={16} />
-        Hyperparams
+        <span className="hidden xl:inline">Hyperparams</span>
         {problems.length > 0 && <span className="h-2 w-2 rounded-full bg-red-500" title={problems.join('\n')} />}
         <ChevronDown size={14} />
       </button>

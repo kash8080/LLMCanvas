@@ -8,6 +8,11 @@ body,
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+/* The app is a fixed full-window layout: the page itself must never scroll (panels scroll inside). */
+html,
+body {
+  overflow: hidden;
+}
 
 /* ---- Ports (PLAN.md §2.4): inputs = hollow blue on top, outputs = filled green on bottom ---- */
 .react-flow__handle.port {

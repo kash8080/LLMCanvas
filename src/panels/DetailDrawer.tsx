@@ -20,7 +20,7 @@ export function DetailDrawer() {
   if (!open) return null
 
   return (
-    <aside className="flex w-[380px] shrink-0 flex-col border-l border-slate-200 bg-white">
+    <aside className="flex w-[340px] shrink-0 flex-col xl:w-[380px] border-l border-slate-200 bg-white">
       {selected.length === 0 && <ModelSummary />}
       {selected.length === 1 && <NodeDetails key={selected[0].id} node={selected[0]} />}
       {selected.length > 1 && <MultiSelection nodes={selected} />}

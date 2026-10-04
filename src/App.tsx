@@ -8,7 +8,7 @@ import { Toolbar } from './panels/Toolbar'
 export default function App() {
   return (
     <ReactFlowProvider>
-      <div className="flex h-screen w-screen flex-col bg-slate-50 text-slate-800">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-slate-50 text-slate-800">
         <Toolbar />
         <div className="flex min-h-0 flex-1">
           <Palette />
