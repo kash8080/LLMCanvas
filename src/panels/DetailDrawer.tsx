@@ -2,11 +2,12 @@ import { X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import type { AnnotationData, AppNode, StickyNode, TextBoxNode } from '../canvas/types'
 import { useCanvasStore } from '../store/useCanvasStore'
+import { PartDetails } from './PartDetails'
 
 const BG_SWATCHES = ['transparent', '#ffffff', '#fef08a', '#fed7aa', '#fecdd3', '#e9d5ff', '#bfdbfe', '#bbf7d0', '#e2e8f0']
 const TEXT_SWATCHES = ['#111827', '#1f2937', '#64748b', '#dc2626', '#2563eb', '#16a34a', '#ffffff']
 
-/** Right-hand drawer. Phase 4 adds the real sections (Overview, Parameters, Shapes, …). */
+/** Right-hand drawer. Phase 2: minimal part editor; Phase 4 adds the full sections (Overview, Size, …). */
 export function DetailDrawer() {
   const open = useCanvasStore((s) => s.drawerOpen)
   const setOpen = useCanvasStore((s) => s.setDrawerOpen)
@@ -37,6 +38,7 @@ export function DetailDrawer() {
 }
 
 function NodeDetails({ node }: { node: AppNode }) {
+  if (node.type === 'part') return <PartDetails node={node} Section={Section} />
   return (
     <div className="flex flex-col gap-5">
       <Section title="Element">

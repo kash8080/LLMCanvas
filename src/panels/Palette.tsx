@@ -1,61 +1,59 @@
-import { Box, StickyNote, Type, type LucideIcon } from 'lucide-react'
-import { DND_MIME, type NodeKind } from '../canvas/types'
+import { StickyNote, Type } from 'lucide-react'
+import { DND_MIME, type PaletteItemId } from '../canvas/types'
+import { CATEGORY_INFO, CATEGORY_ORDER, NODE_DEFS } from '../nodes/registry'
 
-interface PaletteItem {
-  kind: NodeKind
-  label: string
-  hint: string
-  icon: LucideIcon
+function PaletteItem({ item, label, title, children }: { item: PaletteItemId; label: string; title: string; children: React.ReactNode }) {
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(DND_MIME, item)
+        e.dataTransfer.effectAllowed = 'move'
+      }}
+      className="flex cursor-grab items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[13px] shadow-xs transition hover:border-indigo-300 hover:bg-indigo-50/40 active:cursor-grabbing"
+      title={title}
+    >
+      {children}
+      <span className="truncate font-medium text-slate-700">{label}</span>
+    </div>
+  )
 }
 
-interface PaletteSection {
-  title: string
-  items: PaletteItem[]
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <div className="mb-1 px-1 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">{children}</div>
 }
 
-// Phase 2 adds the model parts (Embedding, RMSNorm, Linear, …) from the node registry.
-const SECTIONS: PaletteSection[] = [
-  {
-    title: 'Parts',
-    items: [{ kind: 'placeholder', label: 'Placeholder part', hint: '1 input, 1 output', icon: Box }],
-  },
-  {
-    title: 'Annotate',
-    items: [
-      { kind: 'sticky', label: 'Sticky note', hint: 'Coloured note', icon: StickyNote },
-      { kind: 'textbox', label: 'Text box', hint: 'Free text', icon: Type },
-    ],
-  },
-]
-
+/** Left palette: model parts from the registry grouped by category, plus annotations. */
 export function Palette() {
   return (
-    <aside className="flex w-56 shrink-0 flex-col gap-4 overflow-y-auto border-r border-slate-200 bg-white p-3">
-      {SECTIONS.map((section) => (
-        <div key={section.title}>
-          <div className="mb-1.5 px-1 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">{section.title}</div>
-          <div className="flex flex-col gap-1.5">
-            {section.items.map((item) => (
-              <div
-                key={item.kind}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(DND_MIME, item.kind)
-                  e.dataTransfer.effectAllowed = 'move'
-                }}
-                className="flex cursor-grab items-center gap-2.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm shadow-xs transition hover:border-indigo-300 hover:bg-indigo-50/40 active:cursor-grabbing"
-                title="Drag onto the canvas"
-              >
-                <item.icon size={16} className="text-slate-500" />
-                <div className="leading-tight">
-                  <div className="font-medium text-slate-700">{item.label}</div>
-                  <div className="text-[11px] text-slate-400">{item.hint}</div>
-                </div>
-              </div>
-            ))}
+    <aside className="flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r border-slate-200 bg-white p-3">
+      {CATEGORY_ORDER.map((cat) => {
+        const defs = NODE_DEFS.filter((d) => d.category === cat)
+        if (defs.length === 0) return null
+        return (
+          <div key={cat}>
+            <SectionTitle>{CATEGORY_INFO[cat].label}</SectionTitle>
+            <div className="flex flex-col gap-1">
+              {defs.map((d) => (
+                <PaletteItem key={d.type} item={`part:${d.type}`} label={d.label} title={`${d.docs.overview}\n\nDrag onto the canvas`}>
+                  <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: CATEGORY_INFO[cat].color }} />
+                </PaletteItem>
+              ))}
+            </div>
           </div>
+        )
+      })}
+      <div>
+        <SectionTitle>Annotations</SectionTitle>
+        <div className="flex flex-col gap-1">
+          <PaletteItem item="sticky" label="Sticky note" title="Coloured note — drag onto the canvas">
+            <StickyNote size={14} className="text-slate-500" />
+          </PaletteItem>
+          <PaletteItem item="textbox" label="Text box" title="Free text — drag onto the canvas">
+            <Type size={14} className="text-slate-500" />
+          </PaletteItem>
         </div>
-      ))}
+      </div>
       <p className="mt-auto px-1 text-[11px] leading-snug text-slate-400">
         Drag items onto the canvas. Shift+drag to box-select, ⌘D to duplicate, Delete to remove.
       </p>

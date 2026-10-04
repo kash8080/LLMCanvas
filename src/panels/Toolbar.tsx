@@ -1,8 +1,11 @@
 import { useReactFlow } from '@xyflow/react'
-import { Download, PanelBottom, PanelRight, RotateCcw, Upload, Workflow } from 'lucide-react'
+import { Download, PanelBottom, PanelRight, RotateCcw, Ruler, Upload, Workflow } from 'lucide-react'
 import { useRef } from 'react'
+import { formatCount } from '../engine/format'
+import { topNodes } from '../canvas/nodeFactory'
 import { parseDocument, toDocument } from '../store/persistence'
 import { useCanvasStore } from '../store/useCanvasStore'
+import { HyperparamsMenu } from './HyperparamsMenu'
 
 function ToolbarButton({ onClick, icon: Icon, label, active }: { onClick: () => void; icon: typeof Download; label: string; active?: boolean }) {
   return (
@@ -25,13 +28,16 @@ export function Toolbar() {
   const { fitView } = useReactFlow()
   const drawerOpen = useCanvasStore((s) => s.drawerOpen)
   const analysisOpen = useCanvasStore((s) => s.analysisOpen)
-  const { loadDocument, resetCanvas, setDrawerOpen, setAnalysisOpen } = useCanvasStore.getState()
+  const showEdgeShapes = useCanvasStore((s) => s.showEdgeShapes)
+  const totalParams = useCanvasStore((s) => Object.values(s.inference.nodes).reduce((acc, n) => acc + n.paramCount.total, 0))
+  const { loadDocument, resetCanvas, setDrawerOpen, setAnalysisOpen, setShowEdgeShapes } = useCanvasStore.getState()
 
-  const fitSoon = () => setTimeout(() => fitView({ padding: 0.3, maxZoom: 1, duration: 300 }), 50)
+  const fitSoon = () =>
+    setTimeout(() => fitView({ padding: 0.1, maxZoom: 1, duration: 300, nodes: topNodes(useCanvasStore.getState().nodes) }), 50)
 
   const exportJson = () => {
-    const { nodes, edges } = useCanvasStore.getState()
-    const blob = new Blob([JSON.stringify(toDocument(nodes, edges), null, 2)], { type: 'application/json' })
+    const { nodes, edges, hyperparams } = useCanvasStore.getState()
+    const blob = new Blob([JSON.stringify(toDocument(nodes, edges, hyperparams), null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -50,7 +56,7 @@ export function Toolbar() {
   }
 
   const reset = () => {
-    if (confirm('Reset the canvas? Your current work will be replaced.')) {
+    if (confirm('Reset to the CS336 default model? Your current work will be replaced.')) {
       resetCanvas()
       fitSoon()
     }
@@ -63,10 +69,15 @@ export function Toolbar() {
         LLM Canvas
       </div>
 
-      {/* Hyperparams / mode / dtype / totals arrive in Phases 2, 5 and 6 (PLAN.md §2.5). */}
-      <div className="hidden items-center gap-3 text-xs text-slate-400 md:flex">
-        <span>Params —</span>
-        <span>Mem —</span>
+      <HyperparamsMenu />
+      <ToolbarButton icon={Ruler} label="Shapes on edges" active={showEdgeShapes} onClick={() => setShowEdgeShapes(!showEdgeShapes)} />
+
+      {/* Mode / memory totals arrive in Phases 5 and 6 (PLAN.md §2.5). */}
+      <div className="ml-3 hidden items-center gap-3 text-xs text-slate-500 md:flex">
+        <span title={`${totalParams.toLocaleString()} parameters`}>
+          Params <span className="font-semibold text-slate-700 tabular-nums">{formatCount(totalParams)}</span>
+        </span>
+        <span className="text-slate-400">Mem —</span>
       </div>
 
       <div className="ml-auto flex items-center gap-1">

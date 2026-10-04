@@ -33,6 +33,17 @@ body,
 .react-flow__handle.port.valid {
   background: #bfdbfe;
 }
+/* Bigger invisible hit area so ports are easy to grab / click. */
+.react-flow__handle.port::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 9999px;
+}
+/* Raise a hovered part above its neighbours so its error tooltip isn't covered. */
+.react-flow__node-part:hover {
+  z-index: 1000 !important;
+}
 
 /* Checkerboard for the "transparent" colour swatch */
 .swatch-transparent {
