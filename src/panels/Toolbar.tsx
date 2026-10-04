@@ -6,6 +6,7 @@ import { numLayers } from '../canvas/groupTemplates'
 import { startBounds } from '../canvas/nodeFactory'
 import { parseDocument, toDocument } from '../store/persistence'
 import { useCanvasStore } from '../store/useCanvasStore'
+import { CONNECTED_RULE } from './analysis/ParamsTab'
 import { HyperparamsMenu } from './HyperparamsMenu'
 
 function ToolbarButton({ onClick, icon: Icon, label, active }: { onClick: () => void; icon: typeof Download; label: string; active?: boolean }) {
@@ -32,8 +33,9 @@ export function Toolbar() {
   const analysisOpen = useCanvasStore((s) => s.analysisOpen)
   const showEdgeShapes = useCanvasStore((s) => s.showEdgeShapes)
   const layers = useCanvasStore((s) => numLayers(s.nodes))
-  const totalParams = useCanvasStore((s) => Object.values(s.inference.nodes).reduce((acc, n) => acc + n.paramCount.total, 0))
-  const { loadDocument, resetCanvas, setDrawerOpen, setAnalysisOpen, setShowEdgeShapes } = useCanvasStore.getState()
+  const totalParams = useCanvasStore((s) => s.inference.params.total)
+  const unconnected = useCanvasStore((s) => s.inference.params.unconnected)
+  const { loadDocument, resetCanvas, setDrawerOpen, setAnalysisOpen, openAnalysis, setShowEdgeShapes } = useCanvasStore.getState()
 
   // Show the start of the model. Uses the nodes' declared positions/sizes rather than fitView, which
   // waits for freshly loaded nodes to be measured (unreliable while groups hide their children).
@@ -80,11 +82,19 @@ export function Toolbar() {
       <HyperparamsMenu />
       <ToolbarButton icon={Ruler} label="Shapes on edges" active={showEdgeShapes} onClick={() => setShowEdgeShapes(!showEdgeShapes)} />
 
-      {/* Mode / memory totals arrive in Phases 5 and 6 (PLAN.md §2.5). */}
+      {/* Mode / memory totals arrive in Phase 6 (PLAN.md §2.5). */}
       <div className="ml-3 hidden items-center gap-3 text-xs text-slate-500 md:flex">
-        <span title={`${totalParams.toLocaleString()} parameters`}>
+        <button
+          type="button"
+          onClick={() => openAnalysis('params')}
+          className="-mx-1.5 rounded px-1.5 py-1 hover:bg-slate-100"
+          title={`${totalParams.toLocaleString()} parameters in the model (${CONNECTED_RULE})${
+            unconnected > 0 ? `\n+${unconnected.toLocaleString()} in unconnected parts, not counted.` : ''
+          }\nClick for the breakdown.`}
+        >
           Params <span className="font-semibold text-slate-700 tabular-nums">{formatCount(totalParams)}</span>
-        </span>
+          {unconnected > 0 && <span className="ml-1 text-amber-600 tabular-nums">+{formatCount(unconnected)}</span>}
+        </button>
         <span title="num_layers = Transformer Blocks on the canvas">
           Layers <span className="font-semibold text-slate-700 tabular-nums">{layers}</span>
         </span>

@@ -1,4 +1,5 @@
 // Registry of model-part definitions (NodeDef), one file per part in this folder.
+import type { HighlightKey } from '../engine/params'
 import type { Category, NodeDef } from '../engine/types'
 import { add } from './add'
 import { crossEntropy } from './crossEntropy'
@@ -56,3 +57,14 @@ export const CATEGORY_INFO: Record<Category, { label: string; color: string }> =
 
 /** Palette category order. */
 export const CATEGORY_ORDER: Category[] = ['io', 'embedding', 'norm', 'linear', 'attention', 'ffn', 'elementwise', 'loss']
+
+/** Parameter-breakdown categories (engine/params.ts) and the canvas highlight for unconnected parts. */
+export const PARAM_CATEGORY_INFO: Record<HighlightKey, { label: string; color: string; help: string }> = {
+  embedding: { label: 'Embedding', color: '#3b82f6', help: 'Token embedding table: V · d_model' },
+  attention: { label: 'Attention', color: '#a855f7', help: 'q/k/v/output projections inside attention groups: 4 · d_model² per layer' },
+  ffn: { label: 'FFN', color: '#f97316', help: 'w1/w2/w3 inside SwiGLU groups: 3 · d_model · d_ff per layer' },
+  norm: { label: 'Norms', color: '#14b8a6', help: 'RMSNorm gains: 2 · d_model per layer + ln_final' },
+  lm_head: { label: 'LM head', color: '#6366f1', help: 'The Linear feeding Logits: d_model · V' },
+  other: { label: 'Other', color: '#94a3b8', help: 'Weights outside the standard structure (e.g. an extra Linear)' },
+  unconnected: { label: 'Unconnected', color: '#f59e0b', help: 'Parts that don’t feed Logits / Loss — not counted in the model total' },
+}

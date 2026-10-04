@@ -2,6 +2,7 @@
 import type { AppEdge, AppNode, PartNode } from '../canvas/types'
 import { flattenGroups, GROUP_INPUT, GROUP_OUTPUT, isProxyType } from '../engine/groups'
 import { inferShapes } from '../engine/infer'
+import { accountParams, type ParamReport } from '../engine/params'
 import type { GraphModel, Hyperparams, InferenceResult, NodeStatus, Shape } from '../engine/types'
 import { GROUP_DEFS } from '../nodes/groups'
 import { nodeRegistry } from '../nodes/registry'
@@ -23,7 +24,8 @@ export interface GroupSummary {
   breakdown: { id: string; title: string; params: number }[]
 }
 
-export type CanvasInference = InferenceResult & { groups: Record<string, GroupSummary> }
+/** Shapes + group summaries + parameter accounting (engine/params.ts: connected model, categories, layers). */
+export type CanvasInference = InferenceResult & { groups: Record<string, GroupSummary>; params: ParamReport }
 
 /** Group frames are not parts: only parts (incl. proxies) go to the engine, with their parentId. */
 export function toGraphModel(nodes: AppNode[], edges: Pick<AppEdge, 'id' | 'source' | 'target' | 'sourceHandle' | 'targetHandle'>[]): GraphModel {
@@ -40,10 +42,12 @@ export function toGraphModel(nodes: AppNode[], edges: Pick<AppEdge, 'id' | 'sour
   }
 }
 
-/** Shape inference for the canvas: flatten groups onto their proxies, infer, then summarise groups. */
+/** Shape inference for the canvas: flatten groups onto their proxies, infer, summarise groups, count params. */
 export function inferGraph(nodes: AppNode[], edges: AppEdge[], hp: Hyperparams): CanvasInference {
-  const result = inferShapes(flattenGroups(toGraphModel(nodes, edges)), hp, nodeRegistry)
-  return { ...result, groups: summarizeGroups(nodes, result) }
+  const graph = flattenGroups(toGraphModel(nodes, edges))
+  const result = inferShapes(graph, hp, nodeRegistry)
+  const groups = nodes.flatMap((n) => (n.type === 'group' ? [{ id: n.id, type: n.data.groupType, ...(n.parentId ? { parentId: n.parentId } : {}) }] : []))
+  return { ...result, groups: summarizeGroups(nodes, result), params: accountParams({ graph, groups, inference: result, defs: nodeRegistry, hp }) }
 }
 
 export function nodeTitle(n: AppNode): string {

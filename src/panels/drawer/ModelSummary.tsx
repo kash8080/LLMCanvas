@@ -6,6 +6,7 @@ import { isProxyType } from '../../engine/groups'
 import { HYPERPARAM_INFO } from '../../engine/hyperparams'
 import { nodeTitle } from '../../store/inference'
 import { useCanvasStore } from '../../store/useCanvasStore'
+import { CONNECTED_RULE } from '../analysis/ParamsTab'
 import { DrawerBody, DrawerHeader, Pill, Section } from './ui'
 import { useFocusNode } from './useFocusNode'
 
@@ -31,12 +32,14 @@ export function ModelSummary() {
   const inference = useCanvasStore((s) => s.inference)
   const hp = useCanvasStore((s) => s.hyperparams)
   const setHyperparamsOpen = useCanvasStore((s) => s.setHyperparamsOpen)
+  const openAnalysis = useCanvasStore((s) => s.openAnalysis)
+  const setHighlight = useCanvasStore((s) => s.setHighlight)
   const focus = useFocusNode()
 
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const parts = nodes.filter((n) => n.type === 'part' && !isProxyType(n.data.partType))
   const groups = nodes.filter((n) => n.type === 'group')
-  const totalParams = Object.values(inference.nodes).reduce((acc, r) => acc + r.paramCount.total, 0)
+  const { total: totalParams, unconnected, unconnectedIds } = inference.params
   const layers = numLayers(nodes)
   const problems = nodes.flatMap((n) => {
     const r = n.type === 'part' ? inference.nodes[n.id] : undefined
@@ -61,14 +64,27 @@ export function ModelSummary() {
       <DrawerBody>
         <Section id="summary-model" title="Model">
           <div className="grid grid-cols-2 gap-2">
-            <Stat label="Parameters" value={formatCount(totalParams)} title={`${totalParams.toLocaleString()} parameters`} />
+            <Stat label="Parameters" value={formatCount(totalParams)} title={`${totalParams.toLocaleString()} parameters. ${CONNECTED_RULE}`} />
             <Stat label="Layers (num_layers)" value={String(layers)} title="Number of Transformer Blocks on the canvas" />
             <Stat label="Parts" value={String(parts.length)} title="Parts on the canvas (inside groups too)" />
             <Stat label="Problems" value={String(problems.length)} tone={problems.length > 0 ? 'bad' : 'good'} />
           </div>
           <p className="mt-2 text-[11px] text-slate-400">
-            {groups.length} group{groups.length === 1 ? '' : 's'} · {totalParams.toLocaleString()} parameters in total
+            {groups.length} group{groups.length === 1 ? '' : 's'} · {totalParams.toLocaleString()} parameters in the model{' '}
+            <button type="button" onClick={() => openAnalysis('params')} className="text-indigo-600 hover:underline">
+              breakdown
+            </button>
           </p>
+          {unconnected > 0 && (
+            <button
+              type="button"
+              onClick={() => setHighlight('unconnected')}
+              title={`${CONNECTED_RULE} Click to highlight them.`}
+              className="mt-1 block text-left text-[11px] text-amber-700 hover:underline"
+            >
+              +{unconnected.toLocaleString()} params in {unconnectedIds.length} unconnected part{unconnectedIds.length === 1 ? '' : 's'} (not counted — they don’t feed Logits / Loss)
+            </button>
+          )}
         </Section>
 
         {problems.length > 0 && (

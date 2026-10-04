@@ -1,11 +1,13 @@
-import type { NodeProps } from '@xyflow/react'
+import { useStore, type NodeProps } from '@xyflow/react'
 import { AlertTriangle } from 'lucide-react'
 import { formatCount } from '../../engine/format'
 import { GROUP_INPUT, isProxyType } from '../../engine/groups'
 import { formatConcrete } from '../../engine/shape'
 import type { NodeResult, Shape } from '../../engine/types'
-import { CATEGORY_INFO, getNodeDef } from '../../nodes/registry'
+import { CATEGORY_INFO, getNodeDef, PARAM_CATEGORY_INFO } from '../../nodes/registry'
 import { useCanvasStore } from '../../store/useCanvasStore'
+import { glow, partHighlight } from '../highlight'
+import { lodSelector } from '../lod'
 import { PART_WIDTH, PROXY_HEIGHT, PROXY_WIDTH } from '../nodeFactory'
 import { Port, portLeftPct } from '../Port'
 import type { PartNode as PartNodeType } from '../types'
@@ -14,8 +16,13 @@ import type { PartNode as PartNodeType } from '../types'
 export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
   const def = getNodeDef(data.partType)
   const result = useCanvasStore((s) => s.inference.nodes[id]) as NodeResult | undefined
+  const highlight = useCanvasStore((s) => partHighlight(s, id))
+  const highlightKey = useCanvasStore((s) => s.highlight)
+  const lod = useStore(lodSelector)
+  // false = has weights but doesn't feed Logits / Loss, so it isn't counted in the model total.
+  const counted = useCanvasStore((s) => s.inference.params.parts[id]?.connected ?? true)
   if (!def) return <div className="rounded border border-red-400 bg-white p-2 text-xs text-red-600">Unknown part “{data.partType}”</div>
-  if (isProxyType(def.type)) return <ProxyNode id={id} isInput={def.type === GROUP_INPUT} result={result} selected={selected} />
+  if (isProxyType(def.type)) return <ProxyNode id={id} isInput={def.type === GROUP_INPUT} result={result} selected={selected} dim={highlight === 'dim'} />
 
   const color = CATEGORY_INFO[def.category].color
   const status = result?.status ?? 'unknown'
@@ -33,8 +40,10 @@ export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
 
   return (
     <div
-      className={`group relative rounded-lg border bg-white shadow-sm transition-shadow ${frame} ${selected && status !== 'ok' ? 'shadow-lg' : ''}`}
-      style={{ width: PART_WIDTH }}
+      className={`group relative rounded-lg border bg-white shadow-sm transition ${frame} ${selected && status !== 'ok' ? 'shadow-lg' : ''} ${
+        highlight === 'dim' ? 'opacity-25' : ''
+      }`}
+      style={{ width: PART_WIDTH, boxShadow: highlight === 'match' && highlightKey ? glow(PARAM_CATEGORY_INFO[highlightKey].color, GLOW_RING[lod], GLOW_BLUR[lod]) : undefined }}
     >
       <div className="absolute inset-x-0 top-0 h-1.5 rounded-t-lg" style={{ background: color, opacity: status === 'unknown' ? 0.4 : 1 }} />
 
@@ -50,7 +59,10 @@ export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
           </span>
           {status === 'error' && <AlertTriangle size={13} className="shrink-0 text-red-500" />}
           {params > 0 && (
-            <span className="ml-auto shrink-0 rounded bg-slate-100 px-1 text-[10px] font-medium text-slate-500 tabular-nums" title={`${params.toLocaleString()} parameters`}>
+            <span
+              className={`ml-auto shrink-0 rounded px-1 text-[10px] font-medium tabular-nums ${counted ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-700'}`}
+              title={`${params.toLocaleString()} parameters${counted ? '' : ' — not counted in the model total: this part doesn’t feed Logits / Loss'}`}
+            >
               {formatCount(params)}
             </span>
           )}
@@ -76,8 +88,12 @@ export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
   )
 }
 
+// Highlight glow per level of detail: thicker when zoomed out so a highlighted part is still visible.
+const GLOW_RING = ['24px', '8px', '3px'] as const
+const GLOW_BLUR = ['60px', '30px', '18px'] as const
+
 /** The small in / out pill inside a group that bridges the group's outer port (src/engine/groups.ts). */
-function ProxyNode({ id, isInput, result, selected }: { id: string; isInput: boolean; result?: NodeResult; selected?: boolean }) {
+function ProxyNode({ id, isInput, result, selected, dim }: { id: string; isInput: boolean; result?: NodeResult; selected?: boolean; dim?: boolean }) {
   const shape = result?.outputShapes[0] ?? null
   const status = result?.status ?? 'unknown'
   const text = shape ? formatConcrete(shape) : status === 'error' ? 'not connected' : '?'
@@ -85,7 +101,7 @@ function ProxyNode({ id, isInput, result, selected }: { id: string; isInput: boo
     <div
       className={`flex items-center justify-center gap-1.5 rounded-full border bg-white/90 px-2 text-[10px] leading-none ${
         status === 'error' ? 'border-red-400 text-red-600' : selected ? 'border-indigo-400 text-slate-600' : 'border-dashed border-slate-300 text-slate-500'
-      }`}
+      } ${dim ? 'opacity-25' : ''}`}
       style={{ width: PROXY_WIDTH, height: PROXY_HEIGHT }}
       title={isInput ? 'Group input: what arrives at the group’s top port' : 'Group output: leaves through the group’s bottom port'}
     >

@@ -235,3 +235,57 @@ node component, connection validation, default flat CS336 graph.
   never measured; a group in manual *Closed* mode stays closed, so the part is selected but not visible.
 
 **Next:** Phase 5 — parameter accounting (`engine/params` + tests, analysis panel total + formula + category bar).
+
+## 2026-10-04 — Session 6: Phase 5 (parameter accounting)
+**Done**
+- `src/engine/params.ts` (pure): `accountParams({graph (flattened), groups, inference, defs, hp})` → `ParamReport`:
+  - **Connected-model rule:** a part counts when it feeds a `logits` / `loss` part (reverse walk over the flattened
+    edges). Everything else with weights is `unconnected` (`unconnected`, `unconnectedIds`). No Logits/Loss on the
+    canvas → everything counts (`hasOutput: false`).
+  - Categories `embedding | attention | ffn | norm | lm_head | other`: Embedding parts; parts inside an `mha` group;
+    inside a `swiglu` group; RMSNorm; a Linear whose output goes straight into Logits; anything else.
+  - `rows`: per-layer breakdown in topological order; row = top-level ancestor group (Transformer Block = layer)
+    or the part itself (token_embeddings, ln_final, lm_head), each with its own per-category split.
+  - `groups[id]`: highlight keys inside + connected / unconnected params (for glow and amber "not counted").
+  - `formula` (`standardFormula(hp, L, actual)`): `V·d + L·(4d² + 3d·d_ff + 2d) + d + d·V` with substituted numbers;
+    `L` = connected blocks; `matches` only if every category equals its term, else `diffs` per category.
+  - `paramInsights(report)`: 1–2 factual lines (embedding + LM head share and the block count where blocks would
+    dominate; FFN / attention ratio; norms share).
+- Store: `inference.params` is derived next to shapes in `inferGraph` (same memo). New UI state: `analysisTab`
+  (`'params'`), `openAnalysis(tab)`, `highlight: HighlightKey | null` + `setHighlight`. Esc (Canvas keydown) clears it.
+- Analysis panel: header with tabs (`TABS` + `TAB_BODY` in `AnalysisPanel.tsx`), body `h-72`.
+  `src/panels/analysis/ParamsTab.tsx`: big total + unconnected note, formula block (✓ matches / ≠ + diff list),
+  stacked category bar + legend chips (click = highlight, again = clear), per-layer list with mini stacked bars
+  (click = `useFocusNode`), "Unconnected" row (click = highlight them), insights.
+- Canvas highlight (`src/canvas/highlight.ts`): matching parts glow in the category colour (ring grows at low zoom
+  via the LOD bucket), others dim to 25 %; collapsed group cards containing matches glow, others dim; expanded frames
+  without matches dim. A "Highlighting X · N params · Esc" chip shows over the canvas.
+- Badges: part/group param badges turn amber with a "not counted" tooltip when unconnected; collapsed card says
+  "(not counted)". Toolbar Params chip = connected total (+ amber `+X` for unconnected), click opens the tab.
+  Drawer summary uses the connected total; drawer Size shows "x % of the model · Category" or a "not counted" note.
+- `PARAM_CATEGORY_INFO` (label, colour, help) in `src/nodes/registry.ts`.
+- Tests: `src/engine/params.test.ts` (13): default 16,468,480 + exact categories, rows order, formula string + match,
+  group keys, insight text, wired 3rd block → 19,582,464 / L = 3, unwired block → unconnected, stray Linear (even
+  fed from the model) doesn't change the total, extra connected Linear → Other + formula mismatch, hyperparam change,
+  no-output canvas, 4-layer formula = 22,696,448. 86 tests pass; `pnpm build` passes.
+- Browser-checked at 1440×900: numbers on the default graph, Attention / FFN / Embedding / Unconnected highlight
+  (incl. collapsed attn and Block cards glowing), Esc, Block 2 row focus, d_model 768 / d_ff 2048 / V 32000 →
+  63,311,616 (matches), two stray Linears → "+1.18M", palette block → amber "not counted" until wired, wired in →
+  3 layers, L = 3, 70,391,040.
+
+**Layout notes (for Phase 6)**
+- Add the Memory tab: extend `AnalysisTab` in `useCanvasStore.ts`, add `{id: 'memory', label, meta}` to `TABS` and a
+  body in `TAB_BODY` (`src/panels/AnalysisPanel.tsx`). The toolbar "Mem —" placeholder is still there.
+- Reuse the connected rule: P for weights/grads/optimizer = `inference.params.total`; activation sums should iterate
+  only parts with `connected` — `ParamReport.parts` only lists weighted parts, so for activations either export the
+  `connected` set from `accountParams` (small change) or recompute the same reverse walk.
+- Highlighting is generic over `HighlightKey`; a memory "heat" view could add its own keys or a separate state.
+
+**Gotchas**
+- Automated HTML5 drag-and-drop from the palette: `left_click_drag` works; a synthetic `DragEvent` with a
+  `new DataTransfer()` dispatched on `.react-flow` also works (handy for scripted drops).
+- `num_layers` (toolbar / hyperparams) still counts *all* blocks on the canvas, while the formula's `L` counts
+  connected blocks — they differ while a new block isn't wired in (the formula note says "connected").
+- Ref-based clicks in the browser pane log harmless React Flow `nodrag` errors (`view` is null on synthetic events).
+
+**Next:** Phase 6 — memory estimation (`engine/memory` + tests, mode/dtype/checkpointing controls, Memory tab).

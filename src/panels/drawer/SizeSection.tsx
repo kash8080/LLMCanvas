@@ -3,6 +3,8 @@
 import { formatCount } from '../../engine/format'
 import type { ParamCountResult } from '../../engine/types'
 import type { GroupSummary } from '../../store/inference'
+import { useCanvasStore } from '../../store/useCanvasStore'
+import { PARAM_CATEGORY_INFO } from '../../nodes/registry'
 import { Formula } from './DocsSections'
 import { Section, SubHeading } from './ui'
 import { useFocusNode } from './useFocusNode'
@@ -21,6 +23,7 @@ export function PartSizeSection({ nodeId, title, count }: { nodeId: string; titl
       ) : (
         <>
           <TotalLine total={total} />
+          <ModelShare nodeId={nodeId} />
           <Formula lines={[`params = ${symbolic}`, `${symbolic === concrete ? '' : `= ${concrete} `}= ${total.toLocaleString()}`]} />
           <div className="mt-2 space-y-1">
             {tensors.map((t) => {
@@ -59,6 +62,7 @@ export function GroupSizeSection({ nodeId, summary, paramFormula, color }: { nod
     <Section id="size" title="Size" meta={`${formatCount(total)} params`}>
       <SubHeading>Parameters (sum of the parts inside)</SubHeading>
       <TotalLine total={total} />
+      <ModelShare nodeId={nodeId} />
       {paramFormula && <Formula lines={[`params = ${paramFormula}`, `= ${total.toLocaleString()}`]} />}
       <SubHeading>Breakdown</SubHeading>
       <div className="space-y-0.5">
@@ -92,6 +96,38 @@ function TotalLine({ total }: { total: number }) {
     <div className="mb-1.5 flex items-baseline gap-1.5">
       <span className="text-lg font-semibold text-slate-800 tabular-nums">{total.toLocaleString()}</span>
       <span className="text-xs text-slate-400">params{total >= 1000 ? ` (${formatCount(total)})` : ''}</span>
+    </div>
+  )
+}
+
+/** "6.4% of the model · Attention", or why this part / group isn't counted (engine/params.ts). */
+function ModelShare({ nodeId }: { nodeId: string }) {
+  const report = useCanvasStore((s) => s.inference.params)
+  const part = report.parts[nodeId]
+  const group = report.groups[nodeId]
+  const counted = part ? (part.connected ? part.params : 0) : (group?.connected ?? 0)
+  const uncounted = part ? (part.connected ? 0 : part.params) : (group?.unconnected ?? 0)
+  if (counted === 0 && uncounted === 0) return null
+  const share = report.total > 0 ? `${((counted / report.total) * 100).toFixed(1)}%` : '—'
+  return (
+    <div className="mb-2 space-y-0.5 text-xs">
+      {counted > 0 && (
+        <div className="text-slate-500">
+          {share} of the model
+          {part && (
+            <>
+              {' · '}
+              <span className="inline-block h-2 w-2 rounded-sm align-middle" style={{ background: PARAM_CATEGORY_INFO[part.category].color }} />{' '}
+              {PARAM_CATEGORY_INFO[part.category].label}
+            </>
+          )}
+        </div>
+      )}
+      {uncounted > 0 && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">
+          {uncounted.toLocaleString()} params not counted in the model total: {part ? 'this part doesn’t' : 'these parts don’t'} feed Logits / Loss.
+        </div>
+      )}
     </div>
   )
 }

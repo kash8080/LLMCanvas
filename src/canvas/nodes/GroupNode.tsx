@@ -4,7 +4,9 @@ import { formatCount } from '../../engine/format'
 import { formatConcrete, formatSymbolic } from '../../engine/shape'
 import type { Shape } from '../../engine/types'
 import { GROUP_DEFS } from '../../nodes/groups'
+import { PARAM_CATEGORY_INFO } from '../../nodes/registry'
 import { useCanvasStore } from '../../store/useCanvasStore'
+import { glow, groupHighlight } from '../highlight'
 import { GROUP_HEADER, GROUP_LAYOUT } from '../groupTemplates'
 import { isGroupExpanded, lodSelector } from '../lod'
 import { Port } from '../Port'
@@ -19,6 +21,13 @@ export function GroupNode({ id, data, selected, width }: NodeProps<GroupNodeType
   const def = GROUP_DEFS[data.groupType]
   const lod = useStore(lodSelector)
   const summary = useCanvasStore((s) => s.inference.groups[id])
+  const highlight = useCanvasStore((s) => groupHighlight(s, id))
+  const highlightKey = useCanvasStore((s) => s.highlight)
+  // Weights inside, none of them feeding Logits / Loss (e.g. a block not wired in yet).
+  const uncounted = useCanvasStore((s) => {
+    const g = s.inference.params.groups[id]
+    return !!g && g.connected === 0 && g.unconnected > 0
+  })
   const expanded = isGroupExpanded(data, lod)
   const portLeft = GROUP_LAYOUT[data.groupType].portX * 100
   const title = data.title || def.label
@@ -26,12 +35,16 @@ export function GroupNode({ id, data, selected, width }: NodeProps<GroupNodeType
   const errorTip = summary?.errors.map((e) => `⚠ ${e}`).join('\n')
   // Outer ports grow when zoomed out, so a collapsed card can still be wired up.
   const portSize = PORT_SIZE[lod]
+  const params = summary?.params ?? 0
+  const paramsTip = `${params.toLocaleString()} parameters${uncounted ? ' — not counted in the model total: this group doesn’t feed Logits / Loss' : ''}`
 
   return (
     <div className="relative h-full w-full">
       {expanded ? (
         <div
-          className={`h-full w-full rounded-xl border-2 ${selected ? 'ring-4 ring-indigo-200' : ''} ${status === 'error' ? 'border-red-400' : ''}`}
+          className={`h-full w-full rounded-xl border-2 transition-opacity ${selected ? 'ring-4 ring-indigo-200' : ''} ${status === 'error' ? 'border-red-400' : ''} ${
+            highlight === 'dim' ? 'opacity-30' : ''
+          }`}
           style={{ borderColor: status === 'error' ? undefined : `${def.color}80`, background: `${def.color}0a` }}
         >
           <div className="flex items-center gap-2 rounded-t-[10px] px-3" style={{ height: GROUP_HEADER, background: `${def.color}1c` }}>
@@ -43,8 +56,11 @@ export function GroupNode({ id, data, selected, width }: NodeProps<GroupNodeType
                 <AlertTriangle size={13} /> {summary!.errors.length}
               </span>
             )}
-            <span className="ml-auto shrink-0 rounded bg-white/70 px-1.5 text-[11px] font-medium text-slate-600 tabular-nums" title={`${(summary?.params ?? 0).toLocaleString()} parameters`}>
-              {formatCount(summary?.params ?? 0)}
+            <span
+              className={`ml-auto shrink-0 rounded px-1.5 text-[11px] font-medium tabular-nums ${uncounted ? 'bg-amber-100 text-amber-700' : 'bg-white/70 text-slate-600'}`}
+              title={paramsTip}
+            >
+              {formatCount(params)}
             </span>
             <ModeToggle id={id} mode={data.mode} className="text-[11px]" />
           </div>
@@ -53,9 +69,13 @@ export function GroupNode({ id, data, selected, width }: NodeProps<GroupNodeType
         <div
           className={`relative flex h-full w-full flex-col items-center justify-center gap-[0.35em] overflow-hidden rounded-xl border-2 bg-white px-[0.8em] text-center shadow-sm ${
             selected ? 'ring-4 ring-indigo-200' : ''
-          } ${status === 'error' ? 'border-red-400' : status === 'unknown' ? 'border-dashed' : ''}`}
+          } ${status === 'error' ? 'border-red-400' : status === 'unknown' ? 'border-dashed' : ''} ${highlight === 'dim' ? 'opacity-25' : ''}`}
           // Text scales with the frame: a collapsed block is read zoomed far out.
-          style={{ fontSize: (width ?? 400) / 16, borderColor: status === 'error' ? undefined : def.color }}
+          style={{
+            fontSize: (width ?? 400) / 16,
+            borderColor: status === 'error' ? undefined : def.color,
+            boxShadow: highlight === 'match' && highlightKey ? glow(PARAM_CATEGORY_INFO[highlightKey].color, '0.5em', '2em') : undefined,
+          }}
           title={errorTip}
         >
           <div className="absolute inset-x-0 top-0 h-[0.35em]" style={{ background: def.color }} />
@@ -65,8 +85,8 @@ export function GroupNode({ id, data, selected, width }: NodeProps<GroupNodeType
           </div>
           {data.title && <div className="text-slate-500">{def.label}</div>}
           <ShapeSummary inShape={summary?.inShape ?? null} outShape={summary?.outShape ?? null} />
-          <div className="font-semibold text-slate-700 tabular-nums" style={{ fontSize: '1.2em' }} title={`${(summary?.params ?? 0).toLocaleString()} parameters`}>
-            {formatCount(summary?.params ?? 0)} <span className="font-normal text-slate-400">params</span>
+          <div className={`font-semibold tabular-nums ${uncounted ? 'text-amber-600' : 'text-slate-700'}`} style={{ fontSize: '1.2em' }} title={paramsTip}>
+            {formatCount(params)} <span className="font-normal text-slate-400">params{uncounted ? ' (not counted)' : ''}</span>
           </div>
           {summary && summary.contains.length > 0 && (
             <div className="max-w-[90%] leading-snug text-slate-400" style={{ fontSize: '0.6em' }}>

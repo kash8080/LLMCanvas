@@ -5,6 +5,7 @@ import { createNode, newId } from '../canvas/nodeFactory'
 import type { AnnotationData, AppEdge, AppNode, GroupMode, PaletteItemId } from '../canvas/types'
 import { cs336Document } from '../defaults/cs336Graph'
 import { isProxyType } from '../engine/groups'
+import type { HighlightKey } from '../engine/params'
 import type { Hyperparams, ParamValue } from '../engine/types'
 import type { GroupType } from '../nodes/groups'
 import { inferCanvas, type CanvasInference } from './inference'
@@ -19,6 +20,9 @@ export interface PortPopover {
   y: number
 }
 
+/** Tabs of the bottom analysis panel (Phase 6 adds 'memory'). */
+export type AnalysisTab = 'params'
+
 export interface CanvasState {
   nodes: AppNode[]
   edges: AppEdge[]
@@ -28,6 +32,9 @@ export interface CanvasState {
   // UI state
   drawerOpen: boolean
   analysisOpen: boolean
+  analysisTab: AnalysisTab
+  /** Param category (or 'unconnected') highlighted on the canvas from the analysis panel; Esc clears it. */
+  highlight: HighlightKey | null
   showEdgeShapes: boolean
   portPopover: PortPopover | null
   /** Short message shown briefly over the canvas (e.g. why a connection was refused). */
@@ -60,6 +67,9 @@ export interface CanvasState {
   setHyperparamsOpen: (open: boolean) => void
   toggleSection: (key: string) => void
   setAnalysisOpen: (open: boolean) => void
+  /** Open the analysis panel on a tab. */
+  openAnalysis: (tab: AnalysisTab) => void
+  setHighlight: (key: HighlightKey | null) => void
   setShowEdgeShapes: (show: boolean) => void
   setPortPopover: (popover: PortPopover | null) => void
   showHint: (message: string) => void
@@ -92,6 +102,8 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     ...withInference(docToState(loadFromStorage() ?? cs336Document())),
     drawerOpen: true,
     analysisOpen: false,
+    analysisTab: 'params',
+    highlight: null,
     showEdgeShapes: true,
     portPopover: null,
     hint: null,
@@ -206,6 +218,8 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     setHyperparamsOpen: (open) => set({ hyperparamsOpen: open }),
     toggleSection: (key) => set((s) => ({ collapsedSections: { ...s.collapsedSections, [key]: !s.collapsedSections[key] } })),
     setAnalysisOpen: (open) => set({ analysisOpen: open }),
+    openAnalysis: (tab) => set({ analysisOpen: true, analysisTab: tab }),
+    setHighlight: (key) => set({ highlight: key }),
     setShowEdgeShapes: (show) => set({ showEdgeShapes: show }),
     setPortPopover: (popover) => set({ portPopover: popover }),
     showHint: (message) => {

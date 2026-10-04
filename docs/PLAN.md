@@ -165,6 +165,14 @@ Sanity check (unit test): default params = 5,120,000 (emb) + 2 × 3,113,984 (blo
 - Analysis panel: total with the formula written out
   `V·d + L·(4d² + 3dF + 2d) + d + d·V`, and a stacked bar by category:
   Embedding / Attention / FFN / Norms / LM head. Clicking a category highlights those nodes on canvas.
+- **Model = connected parts** (`src/engine/params.ts`): a part counts when it feeds a Logits or Loss part
+  (reverse walk over the flattened graph). Others are "unconnected" — shown as `+X in N unconnected parts,
+  not counted` (toolbar, summary, panel, amber badges). No Logits/Loss on the canvas → everything counts.
+- Categories: Embedding (Embedding parts), Attention (inside an MHA group), FFN (inside a SwiGLU group),
+  Norms (RMSNorm), LM head (a Linear feeding Logits), Other (anything else with weights).
+- `L` in the formula = connected Transformer Blocks. The formula "matches" only when every category equals
+  its term; otherwise it is labelled "standard CS336 formula" and the per-category differences are listed
+  (the per-part sum is always the real count).
 
 ## 5. Memory estimation (R8)
 Educational estimate, not allocator-exact. `bytes(dtype)` = 4 (fp32) / 2 (bf16/fp16). P = total params.
@@ -230,9 +238,10 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [x] Docs content for every node type and group (from CS336 code + handout)
 - [x] Empty-selection state = model summary
 
-### Phase 5 — Parameter accounting (R7)
-- [ ] `engine/params` + tests (22,696,448 default)
-- [ ] Per-node badge, analysis panel total + formula + category bar, click-to-highlight
+### Phase 5 — Parameter accounting (R7) ✅
+- [x] `engine/params` + tests (16,468,480 for the 2-block default; formula gives 22,696,448 for 4 blocks)
+- [x] Per-node badge, analysis panel total + formula + category bar, click-to-highlight
+      (+ per-layer list with click-to-focus, insights, connected-model rule, Analysis tabs ready for Memory)
 
 ### Phase 6 — Memory estimation (R8)
 - [ ] `engine/memory` + tests
