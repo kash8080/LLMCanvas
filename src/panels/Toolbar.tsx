@@ -8,7 +8,7 @@ import type { FloatDType } from '../engine/types'
 import { numLayers } from '../canvas/groupTemplates'
 import { startBounds } from '../canvas/nodeFactory'
 import { parseDocument, toDocument } from '../store/persistence'
-import { selectMemory, useCanvasStore } from '../store/useCanvasStore'
+import { selectGenerationSettings, selectMemory, useCanvasStore } from '../store/useCanvasStore'
 import { MODE_INFO } from './analysis/memoryText'
 import { CONNECTED_RULE } from './analysis/ParamsTab'
 import { HyperparamsMenu } from './HyperparamsMenu'
@@ -256,19 +256,20 @@ function MoreMenu({ items }: { items: { icon: typeof Download; label: string; on
   )
 }
 
-/** "Mem 1.51 GB" — click opens the Memory tab. */
+/** "Mem 1.51 GB" — click opens the Memory tab. Emerald when it is the generation (KV cache) estimate. */
 function MemoryChip() {
   const total = useCanvasStore((s) => selectMemory(s).total)
   const mode = useCanvasStore((s) => s.memoryMode)
+  const generation = useCanvasStore((s) => selectGenerationSettings(s) !== null)
   const openAnalysis = useCanvasStore((s) => s.openAnalysis)
   return (
     <button
       type="button"
       onClick={() => openAnalysis('memory')}
       className="-mx-1.5 rounded px-1.5 py-1 hover:bg-slate-100"
-      title={`Estimated memory for ${MODE_INFO[mode].label}: ${total.toLocaleString()} bytes.\nClick for the breakdown.`}
+      title={`Estimated memory for ${generation ? 'generation with a KV cache (weights + buffers + KV cache + one decode step)' : MODE_INFO[mode].label}: ${total.toLocaleString()} bytes.\nClick for the breakdown.`}
     >
-      Mem <span className="font-semibold text-slate-700 tabular-nums">{formatBytes(total)}</span>
+      Mem <span className={`font-semibold tabular-nums ${generation ? 'text-emerald-700' : 'text-slate-700'}`}>{formatBytes(total)}</span>
     </button>
   )
 }

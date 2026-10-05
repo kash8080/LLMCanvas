@@ -7,7 +7,7 @@ import { createFrameNode, createNode, newId } from '../canvas/nodeFactory'
 import type { AnnotationData, AppEdge, AppNode, FrameData, GroupMode, PaletteItemId } from '../canvas/types'
 import { cs336Document } from '../defaults/cs336Graph'
 import { isProxyType } from '../engine/groups'
-import type { MemoryHighlightKey, MemoryMode } from '../engine/memory'
+import type { GenerationSettings, MemoryHighlightKey, MemoryMode } from '../engine/memory'
 import type { HighlightKey } from '../engine/params'
 import type { Hyperparams, ParamValue } from '../engine/types'
 import type { GroupType } from '../nodes/groups'
@@ -49,6 +49,13 @@ export interface AddNodeOptions {
   connectFrom?: ConnectionFrom
 }
 
+/** Generation (KV cache) view of the Memory tab. */
+export interface GenerationState {
+  on: boolean
+  length: number | null
+  batch: number | null
+}
+
 /** Tabs of the bottom analysis panel. */
 export type AnalysisTab = 'params' | 'memory'
 
@@ -70,6 +77,11 @@ export interface CanvasState {
   /** Memory estimate settings (R8): mode and activation checkpointing (CS336 `checkpoint_blocks`). UI state, not saved. */
   memoryMode: MemoryMode
   checkpointing: boolean
+  /**
+   * Forward mode: estimate generation with a KV cache (Memory tab). `length` / `batch` null = follow
+   * context_length / batch_size. UI state like the mode: not saved, not undoable.
+   */
+  generation: GenerationState
   /** Tint parts by the activation memory they hold. */
   memoryHeat: boolean
   showEdgeShapes: boolean
@@ -127,6 +139,7 @@ export interface CanvasState {
   setHighlight: (key: CanvasHighlight | null) => void
   setMemoryMode: (mode: MemoryMode) => void
   setCheckpointing: (on: boolean) => void
+  setGeneration: (patch: Partial<GenerationState>) => void
   setMemoryHeat: (on: boolean) => void
   setShowEdgeShapes: (show: boolean) => void
   setPortPopover: (popover: PortPopover | null) => void
@@ -209,6 +222,7 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     highlight: null,
     memoryMode: 'train',
     checkpointing: false,
+    generation: { on: false, length: null, batch: null },
     memoryHeat: false,
     showEdgeShapes: true,
     portPopover: null,
@@ -401,6 +415,7 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     setHighlight: (key) => set({ highlight: key }),
     setMemoryMode: (mode) => set({ memoryMode: mode }),
     setCheckpointing: (on) => set({ checkpointing: on }),
+    setGeneration: (patch) => set({ generation: { ...get().generation, ...patch } }),
     setMemoryHeat: (on) => set({ memoryHeat: on }),
     setShowEdgeShapes: (show) => set({ showEdgeShapes: show }),
     setPortPopover: (popover) => set({ portPopover: popover }),
@@ -412,8 +427,14 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
   }
 })
 
-/** The memory estimate for the current graph + mode (memoised; engine/memory.ts). Use as a selector. */
-export const selectMemory = (s: CanvasState) => memoryFor(s.inference, s.hyperparams, s.memoryMode, s.checkpointing)
+/** Generation settings for the engine when the KV-cache view is active (Forward mode + generation on), else null. */
+export const selectGenerationSettings = (s: CanvasState): GenerationSettings | null => (s.memoryMode === 'forward' && s.generation.on ? s.generation : null)
+
+/**
+ * The memory estimate for the current graph + mode (memoised; engine/memory.ts). Use as a selector.
+ * With generation on (Forward), it is the generation estimate: weights + buffers + KV cache + one decode step.
+ */
+export const selectMemory = (s: CanvasState) => memoryFor(s.inference, s.hyperparams, s.memoryMode, s.checkpointing, selectGenerationSettings(s))
 
 /**
  * Deleting: a group's in/out proxies can't be deleted on their own (the group would lose its port),

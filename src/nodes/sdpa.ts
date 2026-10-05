@@ -48,6 +48,8 @@ export const sdpa: NodeDef = {
       'The softmax subtracts the row max before exp(), so it never overflows.',
       'Without the 1/√d_k scale, dot products grow with d_k and the softmax saturates (tiny gradients).',
       'Backward needs Q, K, V and the attention probabilities.',
+      'Generating with a KV cache: past K (after RoPE) and V never change, so each layer keeps them — 2 · B · H · T · d_head values, +4,096 B per new token per sequence here (fp32). Each step is then 1 query × T keys: probs B × H × 1 × T, O(T) work instead of O(T²).',
+      'CS336’s Decoding.py has no KV cache: every step re-runs the whole (cropped) prefix through the model.',
     ],
     paramHelp: {
       causal: 'On: query i only sees keys j ≤ i (CS336 always uses it, via a torch.tril mask built in MultiHeadSelfAttention).',

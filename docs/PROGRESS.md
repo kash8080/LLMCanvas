@@ -523,3 +523,57 @@ new node kind; make their create / move / resize / rename / recolour go through 
 **Next:** 7d — KV-cache estimate for generation (memory): 2 · L · B · T · d_model · bytes (K and V per layer; per
 attention group from the MHA's k/v projections), probably a new memory mode or a "generation" sub-section in the Memory
 tab. Note `HyperparamKey` excludes non-numeric hyperparams; tying doesn't affect the KV cache.
+
+## 2026-10-05 — Session 12: Phase 7d (KV-cache estimate for generation)
+**Done**
+- Engine (`src/engine/memory.ts`, pure): new component `kv_cache` (0 outside generation) and `MemoryInput.generation`
+  (`{length?, batch?}`, null = follow context_length / batch_size). In Forward mode with generation set,
+  `estimateMemory` → `estimateGeneration`: re-infers the flattened graph with every Data Batch at `B_gen × 1`
+  (`inferShapes` + `checkTying`), runs the normal forward-peak estimate on it with `decodeKvLength = T_cache` (SDPA's
+  attention probs → `B × H × 1 × T_cache`), and adds the KV cache: one `KvCacheItem` per connected SDPA part (K after
+  RoPE and V as they enter it, seq dim → T_cache; `groups` = MHA / Block ancestors, `row`, heads / d_k / d_v,
+  `perToken`, bytes). `MemoryReport.generation = {length, maxLength, batch, dModel, kv: {total, perToken, items,
+  skipped}}`. `kvCacheOf(report, id)`, `kvFormula(gen, b)` (`K + V: 2 · L · B · T_cache · d_model · bytes = 2 · 2 · 32 ·
+  256 · 512 · 4`), and `memoryInsights` switches to KV lines (per-token cost, at full context, vs weights + crossover,
+  O(T) vs O(T²) and "CS336's Decoding.py has no KV cache", small per-step activations, GQA / MQA note, bf16).
+- Store: `generation: {on, length, batch}` + `setGeneration(patch)` (UI state, not saved, not undoable — like the mode);
+  `selectGenerationSettings(s)` (non-null only in Forward + on); `selectMemory` passes it on, so the toolbar Mem chip,
+  the Memory tab badge, the drawer and the heat tint all show the generation estimate. `memoryFor` / `memoryInput`
+  take the settings (memo key includes them).
+- Memory tab: emerald "Generation (KV cache)" box under the total (checkbox, disabled with "Forward mode only" in the
+  other modes; T_cache input with "/ context_length" and max validation, B input, "= ctx" / "= batch_size" links to
+  follow the hyperparams again); "KV cache" segment + chip in the component bar; kv_cache formula line (hidden when
+  off); KV-cache section (total, per-token bytes, share, formula, one row per layer with `K, V: 32×16×256×32 each`,
+  click = focus the SDPA); headings say "decode-step peak"; insights titled "KV cache: what to remember".
+  `NumberField` got an optional `max`.
+- Toolbar: Mem chip value turns emerald in generation and its tooltip says what is counted (no extra width).
+- Drawer (`SizeSection.tsx`): `KvCacheLine` for SDPA parts and for groups containing them (MHA, Block): bytes, cache
+  shape `B × H × T_cache × d_head`, +bytes per token per sequence, share of the cache; "Memory · Generation (KV cache)"
+  sub-heading and "one new token" wording. Docs: 2 points in SDPA (cache size / O(T) step, CS336 has no cache), 1 in MHA.
+- Tests: `src/engine/kvcache.test.ts` (10: default 67,108,864; per-layer items, shapes, groups, `kvCacheOf`; per token
+  8,192 / 4,096; linear in T_cache, B (and batch_size by default), 3rd block ×1.5; clamping + context_length 512 → ×2;
+  bf16 halves, tying no change; total = weights + buffers + KV + step and > weights, no grads / optimizer; decode step
+  peak at lm_head 1,345,536 and SDPA live = 4·B·H·d_head + B·H·T_cache (scales with T_cache); train / plain forward
+  have kv_cache 0; formula + insights incl. crossover 8,042), `src/store/generation.test.ts` (2: Forward-only, totals,
+  settings follow hyperparams, not undoable). 176 tests pass; `pnpm build` passes.
+- Browser-checked at 1440×900 and 1024×768 (dev server that was already running on :5173): Forward → generation on →
+  134.4 MB (weights 65.9 MB 49 %, KV 67.1 MB 50 %, activations 1.3 MB); T_cache 128 → 33.6 MB / Mem 100.8 MB + "At
+  T_cache = context_length …" line; B 8 → 8.4 MB; 999 → red (max 256); "= ctx"; SDPA drawer (8×16×256×32, +4,096 B,
+  live 196.6 KB) and attn group drawer; bf16 → formula `· 2`, halved; context_length 512 → T_cache 512 / 512 (follows);
+  two toolbar undos restored the hyperparams while the generation settings stayed; Train → checkbox disabled, Mem 1.51 GB;
+  no overflow in header / panel at 1440 and 1024, no console errors. User's saved canvas restored to its original
+  20,644 chars (see gotcha).
+
+**Default numbers (fp32, 2 blocks, T_cache 256, B 32)**: KV cache 67,108,864 B (33,554,432 per layer), 8,192 B per
+token per sequence, decode step 1,345,536 B (lm_head), generation total 134,393,856 B (134.4 MB).
+
+**Gotchas**
+- With the defaults the KV cache (67.1 MB) is already a bit bigger than the weights (65.9 MB) — not a bug.
+- The generation view re-infers the graph (cheap) — it is memoised with the other memory inputs; any per-part override
+  of `seq_len` / `batch_size` on a Data Batch is replaced by `1` / `B_gen` at the decode step on purpose.
+- The browser pane's `type` action sets the whole text at once, so typing "999" into T_cache never commits 9 / 99.
+- As in Session 11, loading the user's older save re-saves it right away with `"tie_embeddings":false` (+23 chars);
+  restore the original string (without that field) after testing, while the page is idle.
+
+**Next:** all planned work complete. Possible follow-ups (not planned): GQA / MQA as a real attention variant
+(num_kv_heads), persisting mode / generation settings in the document.

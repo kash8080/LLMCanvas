@@ -2,19 +2,21 @@ import { useState } from 'react'
 
 /**
  * Number input that keeps the user's text while typing and commits only valid values.
- * Invalid text (empty, not a number, below min, non-integer when `integer`) gets a red border.
+ * Invalid text (empty, not a number, below min / above max, non-integer when `integer`) gets a red border.
  */
 export function NumberField({
   value,
   onCommit,
   integer = false,
   min,
+  max,
   className = '',
 }: {
   value: number
   onCommit: (n: number) => void
   integer?: boolean
   min?: number
+  max?: number
   className?: string
 }) {
   const [draft, setDraft] = useState(String(value))
@@ -27,7 +29,7 @@ export function NumberField({
 
   const isValid = (text: string) => {
     const n = Number(text)
-    return text.trim() !== '' && Number.isFinite(n) && (!integer || Number.isInteger(n)) && (min == null || n >= min)
+    return text.trim() !== '' && Number.isFinite(n) && (!integer || Number.isInteger(n)) && (min == null || n >= min) && (max == null || n <= max)
   }
 
   return (

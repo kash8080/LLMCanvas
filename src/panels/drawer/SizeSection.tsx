@@ -2,12 +2,12 @@
 // memory contribution for the current mode (<MemoryContribution>, engine/memory.ts).
 import type { ReactNode } from 'react'
 import { formatBytes, formatCount } from '../../engine/format'
-import type { MemoryReport, MemTensor } from '../../engine/memory'
+import { kvCacheOf, type MemoryReport, type MemTensor } from '../../engine/memory'
 import { formatConcrete } from '../../engine/shape'
 import type { ParamCountResult } from '../../engine/types'
 import { nodeTitle, type GroupSummary } from '../../store/inference'
 import { selectMemory, useCanvasStore } from '../../store/useCanvasStore'
-import { MEMORY_CATEGORY_INFO, PARAM_CATEGORY_INFO } from '../../nodes/registry'
+import { MEMORY_CATEGORY_INFO, MEMORY_COMPONENT_INFO, PARAM_CATEGORY_INFO } from '../../nodes/registry'
 import { MODE_INFO, pct, savedText, saversText, tensorName, titleOf, type NodeIndex } from '../analysis/memoryText'
 import { Formula } from './DocsSections'
 import { Section, SubHeading } from './ui'
@@ -201,14 +201,16 @@ function MemoryContribution({ nodeId }: { nodeId: string }) {
   return (
     <>
       <SubHeading>
-        Memory · {MODE_INFO[report.mode].label} · {report.b} B/value{report.checkpointing ? ' · checkpointing' : ''}
+        Memory · {report.generation ? 'Generation (KV cache)' : MODE_INFO[report.mode].label} · {report.b} B/value{report.checkpointing ? ' · checkpointing' : ''}
       </SubHeading>
       {counted > 0 && <WeightsLine params={counted} report={report} />}
+      <KvCacheLine nodeId={nodeId} report={report} isGroup={isGroup} />
       {report.mode === 'forward' ? (
         <p className="text-xs text-slate-500">
           {acts > 0 ? (
             <>
-              {isGroup ? 'Largest live set inside' : 'Live while it runs (inputs + outputs + temporaries)'}:{' '}
+              {isGroup ? 'Largest live set inside' : 'Live while it runs (inputs + outputs + temporaries)'}
+              {report.generation ? ', one new token' : ''}:{' '}
               <span className="font-mono text-slate-700">{formatBytes(acts)}</span>.{' '}
             </>
           ) : (
@@ -217,7 +219,11 @@ function MemoryContribution({ nodeId }: { nodeId: string }) {
           {a.peakPart === nodeId ? (
             <span className="font-medium text-red-600">This is the forward peak.</span>
           ) : (
-            a.peakPart && <>Forward peak: {titleOf(a.peakPart, byId)} ({formatBytes(a.total)}).</>
+            a.peakPart && (
+              <>
+                {report.generation ? 'Decode-step peak' : 'Forward peak'}: {titleOf(a.peakPart, byId)} ({formatBytes(a.total)}).
+              </>
+            )
           )}
         </p>
       ) : isGroup ? (
@@ -229,6 +235,40 @@ function MemoryContribution({ nodeId }: { nodeId: string }) {
         <PartSaved nodeId={nodeId} report={report} byId={byId} acts={acts} />
       )}
     </>
+  )
+}
+
+/**
+ * Generation view: the K / V cache this attention part (SDPA) or group holds — K after RoPE and V,
+ * B × H × T_cache × d_head each (engine/memory.ts).
+ */
+function KvCacheLine({ nodeId, report, isGroup }: { nodeId: string; report: MemoryReport; isGroup: boolean }) {
+  const gen = report.generation
+  if (!gen) return null
+  const items = gen.kv.items.filter((x) => x.sdpa === nodeId || x.groups.includes(nodeId))
+  if (items.length === 0) return null
+  const bytes = kvCacheOf(report, nodeId)
+  const perToken = items.reduce((a, x) => a + x.perToken, 0)
+  return (
+    <div className="mb-1.5 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs leading-snug text-emerald-900">
+      <div className="flex items-baseline gap-2">
+        <span className="h-2 w-2 shrink-0 self-center rounded-sm" style={{ background: MEMORY_COMPONENT_INFO.kv_cache.color }} />
+        <span>
+          KV cache{isGroup && items.length > 1 ? ` (${items.length} layers)` : ''}
+        </span>
+        <span className="ml-auto font-mono tabular-nums">{formatBytes(bytes)}</span>
+      </div>
+      <div className="pl-4 text-[11px] text-emerald-800/80">
+        {items.length === 1 ? (
+          <>
+            K (after RoPE) + V, each <span className="font-mono">{formatConcrete(items[0].kShape)}</span> (B × H × T_cache × d_head)
+          </>
+        ) : (
+          'K + V of every attention layer inside'
+        )}
+        {' · '}+{perToken.toLocaleString()} B per token per sequence · {pct(bytes, gen.kv.total)} of the cache
+      </div>
+    </div>
   )
 }
 

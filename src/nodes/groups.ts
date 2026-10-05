@@ -76,6 +76,7 @@ export const GROUP_DEFS: Record<GroupType, GroupDef> = {
         'RoPE has no learnable params; only Q and K are rotated, not V.',
         'Causal mask (torch.tril) prevents attending to future tokens.',
         'Attention probs are B × H × T × T — quadratic in T, usually the biggest activation in a block.',
+        'KV cache for generation: each attention layer keeps K (after RoPE) and V for every past token, 2 · B · T · d_model values; with the defaults 2 · 2 · 32 · 256 · 512 · 4 B = 67.1 MB for both layers — about as much as all the weights. GQA / MQA shrink it by sharing K/V heads (not modelled).',
       ],
       cs336Ref: { file: 'MultiHeadSelfAttention.py', symbol: 'MultiHeadSelfAttention.forward' },
     },

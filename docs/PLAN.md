@@ -252,6 +252,27 @@ double-counted). Everything outside the blocks is saved as usual.
 Defaults (fp32, 2 blocks): Forward 410.4 MB (peak at lm_head: input + logits = 344.5 MB); Fwd+Bwd 1.38 GB
 (activations 1,250,721,792 B); Train 1.51 GB; Train + checkpointing 1.09 GB (activations 822,837,248 B).
 
+**Generation with a KV cache (Phase 7d; Forward mode + "Generation (KV cache)" switch in the Memory tab).** Autoregressive
+decoding, one new token per step; each attention layer keeps K (**after RoPE**) and V of every cached token:
+
+| Component | Generation |
+|---|---|
+| Weights | P·b |
+| Buffers | RoPE cos + sin (as above) |
+| KV cache | Σ over connected SDPA parts of K + V, each `B × H × T_cache × d_head` = **2 · L · B · T_cache · d_model · b** |
+| Activations | forward peak for **one new token**: graph re-inferred with every Data Batch at `B_gen × 1`; SDPA's attention probs become `B × H × 1 × T_cache` |
+
+`T_cache` = generation length (default `context_length`, clamped to 1 … `context_length` — RoPE's tables end there);
+`B_gen` defaults to `batch_size`. Both are UI state (`generation` in the store: not saved, not undoable, like the mode;
+`null` = follow the hyperparam). K/V shapes are read from each SDPA's inputs at the decode step, so overridden heads /
+widths are handled; tying doesn't change the cache. Defaults (fp32, 2 layers): KV = 2·2·32·256·512·4 = **67,108,864 B**
+(slightly more than the 65.9 MB of weights; crossover at B·T_cache ≈ 8,042 tokens), **8,192 B per token per sequence**
+(2·L·d·b), decode-step peak at lm_head = 32·512·4 + 32·10000·4 = 1,345,536 B, total 134,393,856 B. CS336's `Decoding.py`
+has **no KV cache** (batch 1, re-runs the whole cropped prefix each step: O(T²) attention per step vs O(T) with a cache).
+Not modelled: GQA / MQA (H_kv < H K/V heads → cache ÷ H/H_kv; mentioned as a note), paged / quantised caches, the scores
+temporary next to the probs, sampling buffers; the decode step still includes Cross-Entropy / Loss parts if they are wired
+(they never set the peak: lm_head's input + logits is larger).
+
 **Breakdown views (Memory tab):** (a) by component with formulas, (b) activations by category (click = highlight on
 canvas), by layer and the biggest tensors (click = focus) — with defaults the attention probabilities
 (`32·16·256·256·4B ≈ 134 MB/layer`) and the logits (`32·256·10000·4B ≈ 328 MB`) dominate, which is exactly the
@@ -312,7 +333,7 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [x] Breakdown by component and by part; per-node contribution in drawer; optional "heat" tint on nodes by activation memory
       (+ formulas, activations by category/layer, top tensors, "where to optimise" insights, category highlight)
 
-### Phase 7 — Extras (approved 2026-10-05)
+### Phase 7 — Extras (approved 2026-10-05) ✅
 - [x] 7a. Removing items made obvious: Delete button in drawer header, right-click context menu (delete / duplicate / …), delete for edges too (Delete/Backspace already works)
       (+ × button on a selected edge; no separate floating selection toolbar — the context menu and the drawer's multi-selection header cover it)
 - [x] 7a. Undo/redo (Cmd+Z / Shift+Cmd+Z + toolbar buttons) covering all graph edits
@@ -322,7 +343,10 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [x] 7c. Extra part variants: LayerNorm, GELU, ReLU, non-gated FFN (CS336 `SiLU.py`) + docs; weight-tying toggle (lm_head shares embedding)
       (partial by design: the FFN group has no own d_ff param — w1/w2 bind to the global d_ff and are unlinked per part;
       palette drops onto an expanded block still land top-level — use quick-add inside the block; no post-norm block template)
-- [ ] 7d. KV-cache estimate for generation (memory)
+- [x] 7d. KV-cache estimate for generation (memory)
+      (a "Generation (KV cache)" switch in the Memory tab, Forward mode only, with T_cache / B inputs — UI state, not saved
+      or undoable; toolbar Mem chip turns emerald and shows the generation total; KV section + insights in the Memory tab;
+      KV line in the SDPA / MHA / Block drawers. GQA / MQA only mentioned as a note — see §5)
 
 ---
 

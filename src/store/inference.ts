@@ -2,7 +2,7 @@
 import type { AppEdge, AppNode, PartNode } from '../canvas/types'
 import { flattenGroups, GROUP_INPUT, GROUP_OUTPUT, isProxyType } from '../engine/groups'
 import { inferShapes } from '../engine/infer'
-import { estimateMemory, type MemoryInput, type MemoryMode, type MemoryReport } from '../engine/memory'
+import { estimateMemory, type GenerationSettings, type MemoryInput, type MemoryMode, type MemoryReport } from '../engine/memory'
 import { accountParams, type GroupInfo, type ParamReport } from '../engine/params'
 import { checkTying } from '../engine/tying'
 import type { GraphModel, Hyperparams, InferenceResult, NodeStatus, Shape } from '../engine/types'
@@ -131,18 +131,37 @@ export function inferCanvas(nodes: AppNode[], edges: AppEdge[], hp: Hyperparams)
   return result
 }
 
-/** Engine input for the memory estimate (engine/memory.ts). */
-export function memoryInput(inference: CanvasInference, hp: Hyperparams, mode: MemoryMode, checkpointing: boolean): MemoryInput {
-  return { graph: inference.graph, groups: inference.groupInfos, inference, params: inference.params, defs: nodeRegistry, hp, mode, checkpointing }
+/** Engine input for the memory estimate (engine/memory.ts). `generation` (forward mode only) = KV-cache generation view. */
+export function memoryInput(
+  inference: CanvasInference,
+  hp: Hyperparams,
+  mode: MemoryMode,
+  checkpointing: boolean,
+  generation: GenerationSettings | null = null,
+): MemoryInput {
+  return { graph: inference.graph, groups: inference.groupInfos, inference, params: inference.params, defs: nodeRegistry, hp, mode, checkpointing, generation }
 }
 
-// Memo for the memory estimate: recomputed only when the inference, hyperparams, mode or checkpointing change.
-let lastMemory: { inference: CanvasInference; hp: Hyperparams; mode: MemoryMode; checkpointing: boolean; report: MemoryReport } | null = null
+// Memo for the memory estimate: recomputed only when the inference, hyperparams, mode, checkpointing or generation settings change.
+let lastMemory: {
+  inference: CanvasInference
+  hp: Hyperparams
+  mode: MemoryMode
+  checkpointing: boolean
+  generation: GenerationSettings | null
+  report: MemoryReport
+} | null = null
 
-export function memoryFor(inference: CanvasInference, hp: Hyperparams, mode: MemoryMode, checkpointing: boolean): MemoryReport {
+export function memoryFor(
+  inference: CanvasInference,
+  hp: Hyperparams,
+  mode: MemoryMode,
+  checkpointing: boolean,
+  generation: GenerationSettings | null = null,
+): MemoryReport {
   const m = lastMemory
-  if (m && m.inference === inference && m.hp === hp && m.mode === mode && m.checkpointing === checkpointing) return m.report
-  const report = estimateMemory(memoryInput(inference, hp, mode, checkpointing))
-  lastMemory = { inference, hp, mode, checkpointing, report }
+  if (m && m.inference === inference && m.hp === hp && m.mode === mode && m.checkpointing === checkpointing && m.generation === generation) return m.report
+  const report = estimateMemory(memoryInput(inference, hp, mode, checkpointing, generation))
+  lastMemory = { inference, hp, mode, checkpointing, generation, report }
   return report
 }

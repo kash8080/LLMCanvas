@@ -92,6 +92,7 @@ export const MEMORY_COMPONENT_INFO: Record<MemoryComponent, { label: string; col
   weights: { label: 'Weights', color: '#0ea5e9', help: 'Every parameter: P · bytes' },
   gradients: { label: 'Gradients', color: '#f59e0b', help: 'One gradient per parameter, same dtype: P · bytes' },
   optimizer: { label: 'Optimizer', color: '#8b5cf6', help: 'AdamW m and v per parameter: 2 · P · bytes' },
+  kv_cache: { label: 'KV cache', color: '#10b981', help: 'Generation: K (after RoPE) and V of every cached token, per attention layer: 2 · L · B · T_cache · d_model · bytes' },
   activations: { label: 'Activations', color: '#ef4444', help: 'Tensors kept for backward (or live at the forward peak)' },
   buffers: { label: 'Buffers', color: '#64748b', help: 'RoPE cos/sin tables (non-persistent buffers)' },
 }

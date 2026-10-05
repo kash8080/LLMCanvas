@@ -21,6 +21,10 @@ export const MODE_INFO: Record<MemoryMode, { label: string; short: string; expla
   },
 }
 
+/** Explanation of the generation (KV cache) view, shown instead of the Forward one. */
+export const GENERATION_EXPLAIN =
+  'Generation with a KV cache: weights + RoPE buffers + the K and V of every cached token in every attention layer + the tensors alive while ONE new token goes through the model (T = 1; attention reads all T_cache cached keys).'
+
 export type NodeIndex = Map<string, AppNode>
 
 export function titleOf(id: string, byId: NodeIndex): string {
