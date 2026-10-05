@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "screenshots:install": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers playwright install chromium",
+    "screenshots": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@xyflow/react": "^12.12.0",
@@ -24,6 +26,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "playwright": "^1.63.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",

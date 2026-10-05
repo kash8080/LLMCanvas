@@ -9,3 +9,6 @@ coverage
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Playwright browsers (pnpm screenshots)
+.playwright-browsers/

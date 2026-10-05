@@ -45,6 +45,8 @@ Vite + React + TypeScript, React Flow (`@xyflow/react` v12), Zustand, Tailwind, 
 - `pnpm test` — run Vitest once (`pnpm test:watch` for watch mode); tests live next to code as `*.test.ts`
 - `pnpm typecheck` — `tsc` (noEmit)
 - `pnpm build` — typecheck + production build to `dist/`
+- `pnpm screenshots` — rebuild + retake the README screenshots (`scripts/screenshots.mjs`, Playwright → `docs/screenshots/`;
+  `pnpm screenshots <name…>` for some; needs Chromium in `./.playwright-browsers` once: `pnpm screenshots:install`)
 
 Saved canvas lives in `localStorage["llm-canvas:v1"]` (document format version 3: hyperparams + group frames with `parentId` children,
 plus top-level user `frame` nodes since Phase 7b);

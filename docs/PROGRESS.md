@@ -577,3 +577,31 @@ token per sequence, decode step 1,345,536 B (lm_head), generation total 134,393,
 
 **Next:** all planned work complete. Possible follow-ups (not planned): GQA / MQA as a real attention variant
 (num_kv_heads), persisting mode / generation settings in the document.
+
+## 2026-10-05 — Session 13: README + screenshots
+**Done**
+- `README.md` (root): pitch + live demo (https://llmcanvas.netlify.app/), what/why (CS336 TransformerLM, nothing executed),
+  features by area with screenshots, part catalog, how to use + controls table, default model (hyperparams, 16,468,480 +
+  formula, memory per mode: Forward 410.4 MB, Fwd+Bwd 1.38 GB, Train 1.51 GB, Train + ckpt 1.09 GB, generation 134.4 MB —
+  rechecked against the tests / app), how the numbers are computed + limitations, run locally, deploy, project structure,
+  adding a part type, docs links, acknowledgements, MIT license.
+- `scripts/screenshots.mjs` + `pnpm screenshots` (Playwright devDependency `playwright`; `pnpm screenshots:install` puts
+  Chromium in `./.playwright-browsers`, git-ignored). Builds, serves `dist/` with `vite preview` on a free port (or
+  `SHOTS_URL` / `SHOTS_NO_BUILD`), one fresh context per shot at 1440×900, deviceScaleFactor 2 (`SHOTS_SCALE=1` for smaller
+  files), stops the server. Optional args filter shots by name. 11 PNGs in `docs/screenshots/` (≈ 4.8 MB): overview,
+  zoom-levels (3 canvas crops composed into one image), drawer-part, port-shape, shape-error, params-tab, memory-tab,
+  kv-cache, quick-add, frames-context-menu, hyperparams. No app code changed (no `data-testid`s needed).
+- 176 tests pass; `pnpm build` passes.
+
+**Gotchas**
+- `playwright install` timed out downloading Chrome for Testing from Node in this environment (curl worked), so the zip was
+  fetched with curl and unpacked into `.playwright-browsers/chromium-1243/chrome-mac-arm64/` + an `INSTALLATION_COMPLETE`
+  marker. The script launches `chromium.launch({ channel: 'chromium' })` (full Chromium, new headless) so the separate
+  headless-shell download isn't needed.
+- Navigation is driven with wheel events: Ctrl+wheel zooms by 2^(−deltaY·0.02) on macOS user agents (0.002 elsewhere), a
+  plain wheel pans by deltaY·0.5. Chromium divides synthetic wheel deltas by the deviceScaleFactor, so the script multiplies
+  by it.
+- Children of nested groups share the block prefix: the SDPA in Block 1 is `b1.sdpa`, not `b1.attn.sdpa`.
+- The analysis panel body is `h-72` and scrolls; analysis shots set a taller height (and window) with an inline style
+  before the screenshot, and scroll it to the top (clicking a category chip scrolls it).
+- A frame's title sits above its top-left corner and under other nodes in z; right-click the frame's own padding instead.
