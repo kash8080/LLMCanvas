@@ -9,9 +9,10 @@
 // Categories (for the breakdown bar):
 //   Embedding  — Embedding parts
 //   Attention  — parts inside a Multi-Head Self-Attention group (q/k/v/output projections)
-//   FFN        — parts inside a SwiGLU group (w1/w2/w3)
-//   Norms      — RMSNorm parts
-//   LM head    — a Linear whose output goes straight into a Logits part
+//   FFN        — parts inside a SwiGLU or non-gated FFN group (w1/w2/w3, or w1/w2)
+//   Norms      — RMSNorm / LayerNorm parts
+//   LM head    — a Linear whose output goes straight into a Logits part (0 params when its weight is
+//                tied to the embedding — hyperparam `tie_embeddings`, engine/tying.ts)
 //   Other      — anything else with weights (e.g. an extra Linear between blocks)
 import { formatCount } from './format'
 import type { Category, GraphModel, Hyperparams, InferenceResult, NodeDef } from './types'
@@ -25,7 +26,7 @@ export type HighlightKey = ParamCategory | 'unconnected'
 /** Part types that mark the model's output: everything feeding them is "the model". */
 export const OUTPUT_PART_TYPES = ['logits', 'loss']
 
-/** Group containers (React Flow parents); `type` is a GroupType ('transformer_block' | 'mha' | 'swiglu'). */
+/** Group containers (React Flow parents); `type` is a GroupType ('transformer_block' | 'mha' | 'swiglu' | 'ffn'). */
 export interface GroupInfo {
   id: string
   type: string
@@ -41,6 +42,8 @@ export interface PartParams {
   connected: boolean
   /** Row in the per-layer breakdown: the part's top-level group (e.g. a Transformer Block) or the part itself. */
   row: string
+  /** Weight tying: the Embedding part whose matrix this LM head reuses (`params` is then 0). */
+  tiedTo?: string
 }
 
 /** One row of the per-layer breakdown, in data-flow order. */
@@ -65,6 +68,10 @@ export interface ParamFormula {
   matches: boolean
   /** Categories where the canvas differs from the formula. */
   diffs: { category: ParamCategory; actual: number; expected: number }[]
+  /** Weight tying is on: the `+ d·V` LM head term is dropped (the embedding matrix is counted once). */
+  tied: boolean
+  /** Why the canvas differs from the standard terms (non-gated FFN, LayerNorm, …), when we can tell. */
+  notes: string[]
 }
 
 export interface ParamReport {
@@ -81,6 +88,8 @@ export interface ParamReport {
   /** Every part with params > 0. */
   parts: Record<string, PartParams>
   rows: ParamRow[]
+  /** Connected LM heads whose weight is tied to an Embedding (they add 0); `params` = what they would add untied. */
+  tied: { id: string; to: string; params: number }[]
   /** Per group: highlight keys of the weighted parts inside, and connected / unconnected params. */
   groups: Record<string, { keys: HighlightKey[]; connected: number; unconnected: number }>
   formula: ParamFormula
@@ -132,7 +141,7 @@ export function accountParams({ graph, groups, inference, defs, hp }: ParamAccou
     if (defCategory === 'norm') return 'norm'
     const inside = ancestors(parentId).map((g) => g.type)
     if (inside.includes('mha') || defCategory === 'attention') return 'attention'
-    if (inside.includes('swiglu') || defCategory === 'ffn') return 'ffn'
+    if (inside.includes('swiglu') || inside.includes('ffn') || defCategory === 'ffn') return 'ffn'
     if (defCategory === 'linear' && feedsLogits.has(id)) return 'lm_head'
     return 'other'
   }
@@ -144,11 +153,17 @@ export function accountParams({ graph, groups, inference, defs, hp }: ParamAccou
   let total = 0
   let unconnected = 0
   const unconnectedIds: string[] = []
+  const tied: ParamReport['tied'] = []
+  // For the formula notes: connected non-gated FFN groups and LayerNorm parts.
+  const nonGatedFfns = new Set<string>()
+  let layerNorms = 0
 
   for (const n of graph.nodes) {
-    const params = inference.nodes[n.id]?.paramCount.total ?? 0
+    const count = inference.nodes[n.id]?.paramCount
+    const params = count?.total ?? 0
     const def = defs[n.type]
-    if (params <= 0 || !def) continue
+    // A tied LM head has 0 params of its own but is still listed (as "tied").
+    if ((params <= 0 && !count?.tied) || !def) continue
     const isConnected = !hasOutput || connected.has(n.id)
     const up = ancestors(n.parentId)
     const p: PartParams = {
@@ -157,8 +172,15 @@ export function accountParams({ graph, groups, inference, defs, hp }: ParamAccou
       category: categoryOf(n.id, def.category, n.parentId),
       connected: isConnected,
       row: up.length > 0 ? up[up.length - 1].id : n.id,
+      ...(count?.tied ? { tiedTo: count.tied.to } : {}),
     }
     parts[n.id] = p
+    if (isConnected && count?.tied) tied.push({ id: n.id, to: count.tied.to, params: count.tied.params })
+    if (isConnected) {
+      const ffn = up.find((g) => g.type === 'ffn')
+      if (ffn) nonGatedFfns.add(ffn.id)
+      if (n.type === 'layernorm') layerNorms += 1
+    }
     const key: HighlightKey = isConnected ? p.category : 'unconnected'
     for (const g of up) {
       const s = groupStats[g.id]
@@ -192,6 +214,15 @@ export function accountParams({ graph, groups, inference, defs, hp }: ParamAccou
   }
 
   const L = rows.filter((r) => r.isLayer).length
+  const notes: string[] = []
+  const s = (k: number) => (k === 1 ? '' : 's')
+  if (nonGatedFfns.size > 0)
+    notes.push(
+      `${nonGatedFfns.size} non-gated FFN${s(nonGatedFfns.size)} (2·d·d_ff each: w1, w2) where the formula assumes SwiGLU (3·d·d_ff: w1, w2, w3). With its own d_ff = 4·d_model a non-gated FFN has about the same params as SwiGLU with d_ff ≈ 8/3·d_model.`,
+    )
+  if (hp.tie_embeddings && tied.length === 0 && byCategory.lm_head > 0)
+    notes.push('Weight tying is on, but the LM head could not be tied (see its error), so it still counts its own d·V.')
+  if (layerNorms > 0) notes.push(`${layerNorms} LayerNorm${s(layerNorms)} (2·d each: gain γ and bias β) where the formula assumes RMSNorm (d: gain only).`)
   return {
     total,
     unconnected,
@@ -201,36 +232,41 @@ export function accountParams({ graph, groups, inference, defs, hp }: ParamAccou
     byCategory,
     parts,
     rows,
+    tied,
     groups: groupStats,
-    formula: standardFormula(hp, L, byCategory),
+    formula: { ...standardFormula(hp, L, byCategory), notes },
   }
 }
 
 /**
- * The standard CS336 TransformerLM count (no biases, no weight tying):
+ * The standard CS336 TransformerLM count (SwiGLU, RMSNorm, no biases, no weight tying):
  *   V·d + L·(4d² + 3d·d_ff + 2d) + d + d·V
+ * With `tie_embeddings` the LM head reuses the embedding matrix, so the `+ d·V` term is dropped.
  * `actual` (the canvas's per-category sums) decides whether the canvas matches it.
  */
 export function standardFormula(hp: Hyperparams, L: number, actual: Record<ParamCategory, number> = emptyByCategory()): ParamFormula {
   const { vocab_size: V, d_model: d, d_ff: F } = hp
+  const tied = !!hp.tie_embeddings
   const expected: Record<ParamCategory, number> = {
     embedding: V * d,
     attention: L * 4 * d * d,
     ffn: L * 3 * d * F,
     norm: (2 * L + 1) * d,
-    lm_head: d * V,
+    lm_head: tied ? 0 : d * V,
     other: 0,
   }
   const value = Object.values(expected).reduce((a, b) => a + b, 0)
   const diffs = PARAM_CATEGORIES.filter((c) => actual[c] !== expected[c]).map((c) => ({ category: c, actual: actual[c], expected: expected[c] }))
   return {
     L,
-    symbolic: 'V·d + L·(4d² + 3d·d_ff + 2d) + d + d·V',
-    substituted: `${V}·${d} + ${L}·(4·${d}² + 3·${d}·${F} + 2·${d}) + ${d} + ${d}·${V}`,
+    symbolic: `V·d + L·(4d² + 3d·d_ff + 2d) + d${tied ? '' : ' + d·V'}`,
+    substituted: `${V}·${d} + ${L}·(4·${d}² + 3·${d}·${F} + 2·${d}) + ${d}${tied ? '' : ` + ${d}·${V}`}`,
     value,
     expected,
     matches: diffs.length === 0,
     diffs,
+    tied,
+    notes: [],
   }
 }
 
@@ -247,9 +283,16 @@ export function paramInsights(report: ParamReport): string[] {
   const layers = rows.filter((r) => r.isLayer)
   const blocks = layers.reduce((a, r) => a + r.params, 0)
   const perBlock = layers.length > 0 ? blocks / layers.length : 0
+  const tied = report.tied.length > 0
 
+  if (tied) {
+    const saved = report.tied.reduce((a, t) => a + t.params, 0)
+    out.push(`Weight tying: the LM head reuses the embedding matrix — one V × d table instead of two, saving ${formatCount(saved)} parameters (untied: ${formatCount(total + saved)}).`)
+  }
   if (vocab > 0 && vocab >= blocks) {
-    let s = `Embedding + LM head = ${pct(vocab)} of the parameters at this size: the two V × d tables outweigh the ${layers.length} block${layers.length === 1 ? '' : 's'}.`
+    let s = tied
+      ? `Embedding (shared with the LM head) = ${pct(vocab)} of the parameters at this size: the V × d table outweighs the ${layers.length} block${layers.length === 1 ? '' : 's'}.`
+      : `Embedding + LM head = ${pct(vocab)} of the parameters at this size: the two V × d tables outweigh the ${layers.length} block${layers.length === 1 ? '' : 's'}.`
     if (perBlock > 0) {
       const crossover = Math.floor(vocab / perBlock) + 1
       s += ` With ≥ ${crossover} blocks (or a larger d_model — blocks grow with d², the tables with d) the blocks would dominate.`
@@ -257,11 +300,12 @@ export function paramInsights(report: ParamReport): string[] {
     out.push(s)
   } else if (blocks > 0) {
     out.push(
-      `Transformer blocks hold ${pct(blocks)} of the parameters (${layers.length} × ${formatCount(Math.round(perBlock))}); embedding + LM head = ${pct(vocab)}.`,
+      `Transformer blocks hold ${pct(blocks)} of the parameters (${layers.length} × ${formatCount(Math.round(perBlock))}); ${tied ? 'embedding (shared with the LM head)' : 'embedding + LM head'} = ${pct(vocab)}.`,
     )
   }
   if (c.attention > 0 && c.ffn > 0) {
-    out.push(`FFN has ${(c.ffn / c.attention).toFixed(2)}× the weights of attention (3·d·d_ff vs 4·d²); norms are just ${pct(c.norm)}.`)
+    const terms = c.ffn === report.formula.expected.ffn && c.attention === report.formula.expected.attention ? ' (3·d·d_ff vs 4·d²)' : ''
+    out.push(`FFN has ${(c.ffn / c.attention).toFixed(2)}× the weights of attention${terms}; norms are just ${pct(c.norm)}.`)
   }
   return out
 }

@@ -25,12 +25,17 @@ export interface Hyperparams {
   rope_theta: number
   batch_size: number
   dtype: FloatDType
+  /**
+   * Weight tying (Phase 7c): the LM head (the Linear feeding Logits) reuses the Embedding matrix, so its
+   * d_model·V weights are counted once. Default false, as in CS336.
+   */
+  tie_embeddings: boolean
 }
 
 export type FloatDType = 'fp32' | 'bf16' | 'fp16'
 
 /** Numeric hyperparameters a node param can be bound to. */
-export type HyperparamKey = Exclude<keyof Hyperparams, 'dtype'>
+export type HyperparamKey = Exclude<keyof Hyperparams, 'dtype' | 'tie_embeddings'>
 
 /** A bind target: a hyperparam, or a value derived from hyperparams (d_head = d_model / num_heads). */
 export type BindKey = HyperparamKey | 'd_head'
@@ -89,8 +94,11 @@ export interface ParamTensor {
 }
 
 export interface ParamCountResult {
+  /** Params this part adds to the model (0 when its weight is tied to another part's). */
   total: number
   tensors: ParamTensor[]
+  /** Weight tying: this part reuses `to`'s weight (an Embedding part id); `params` = what it would own untied. */
+  tied?: { to: string; params: number }
 }
 
 /** A tensor kept alive for the backward pass (PLAN.md §5). Phase 6 dedupes by source tensor. */
@@ -130,6 +138,8 @@ export interface NodeDocs {
   /** Longer help per param key (falls back to `ParamSchema.help`). */
   paramHelp?: Record<string, string>
   cs336Ref?: Cs336Ref
+  /** For variants that are not in the CS336 code (LayerNorm, GELU, ReLU, …): why it is here instead of a reference. */
+  cs336Note?: string
 }
 
 /** Everything about one part type (one file per type in src/nodes/). */

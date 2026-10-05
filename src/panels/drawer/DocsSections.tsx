@@ -51,7 +51,14 @@ export function PointsSection({ points }: { points: string[] }) {
 }
 
 export function ReferenceSection({ docs }: { docs: NodeDocs }) {
-  if (!docs.cs336Ref) return null
+  if (!docs.cs336Ref) {
+    if (!docs.cs336Note) return null
+    return (
+      <Section id="cs336" title="CS336 reference">
+        <p className="text-xs leading-relaxed break-words text-slate-500">{docs.cs336Note}</p>
+      </Section>
+    )
+  }
   const { file, symbol } = docs.cs336Ref
   return (
     <Section id="cs336" title="CS336 reference">

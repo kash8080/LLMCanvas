@@ -4,12 +4,12 @@ import { filterQuickAdd, quickAddItems, quickAddPosition } from './quickAdd'
 const ids = (items: { item: string }[]) => items.map((i) => i.item)
 
 describe('quick-add items', () => {
-  it('from an output: only things with an input (no Data Batch), plus the three groups', () => {
+  it('from an output: only things with an input (no Data Batch), plus the four groups', () => {
     const items = ids(quickAddItems('source'))
     expect(items).not.toContain('part:data_batch')
     expect(items).toContain('part:linear')
     expect(items).toContain('part:loss')
-    expect(items.filter((i) => i.startsWith('group:'))).toEqual(['group:transformer_block', 'group:mha', 'group:swiglu'])
+    expect(items.filter((i) => i.startsWith('group:'))).toEqual(['group:transformer_block', 'group:mha', 'group:swiglu', 'group:ffn'])
     expect(items).not.toContain('sticky')
   })
 
@@ -20,8 +20,10 @@ describe('quick-add items', () => {
     expect(items).toContain('group:mha')
   })
 
-  it('inside a group: no group templates; from the empty canvas: everything incl. annotations', () => {
-    expect(ids(quickAddItems('source', true)).some((i) => i.startsWith('group:'))).toBe(false)
+  it('inside a group: only sub-layer groups inside a block; from the empty canvas: everything incl. annotations', () => {
+    expect(ids(quickAddItems('source', 'mha')).some((i) => i.startsWith('group:'))).toBe(false)
+    expect(ids(quickAddItems('source', 'transformer_block')).filter((i) => i.startsWith('group:'))).toEqual(['group:mha', 'group:swiglu', 'group:ffn'])
+    expect(ids(quickAddItems('source', 'transformer_block'))).toContain('part:layernorm')
     const all = ids(quickAddItems(null))
     expect(all).toContain('part:data_batch')
     expect(all).toContain('part:loss')
@@ -38,6 +40,8 @@ describe('quick-add items', () => {
     expect(ids(filterQuickAdd(items, 'lin'))[0]).toBe('part:linear')
     expect(ids(filterQuickAdd(items, 'RMS'))).toEqual(['part:rmsnorm'])
     expect(ids(filterQuickAdd(items, 'group swig'))).toEqual(['group:swiglu'])
+    expect(ids(filterQuickAdd(items, 'non-gated'))).toEqual(['group:ffn'])
+    expect(ids(filterQuickAdd(items, 'gelu'))).toEqual(['part:gelu'])
     expect(filterQuickAdd(items, '  ')).toBe(items)
     expect(filterQuickAdd(items, 'zzz')).toEqual([])
   })

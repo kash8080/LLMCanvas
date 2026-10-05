@@ -8,7 +8,8 @@
 //                 temporaries like the attention probs), a simple approximation;
 //                 fwd_bwd / train: every tensor saved for backward, each unique tensor counted once.
 //
-// P = connected params (engine/params.ts), b = bytes per element of the float dtype (fp32 4, bf16/fp16 2);
+// P = connected params (engine/params.ts; with weight tying the shared embedding / LM head matrix is in P once,
+// so its weights, gradient and AdamW state are counted once), b = bytes per element of the float dtype (fp32 4, bf16/fp16 2);
 // int64 tensors (token ids, targets) are always 8 bytes. Only parts of the connected model count.
 //
 // Tensor identity: a tensor is its producing part + output port, after skipping pass-through parts
@@ -198,7 +199,7 @@ export function estimateMemory(input: MemoryInput): MemoryReport {
     const def = defs[type]
     if ((type === 'sdpa' && internal === 'attention probs') || type === 'softmax') return 'attn_probs'
     const inside = ancestors(owner).map((g) => g.type)
-    if (inside.includes('swiglu')) return 'ffn'
+    if (inside.includes('swiglu') || inside.includes('ffn')) return 'ffn'
     if (inside.includes('mha') || def?.category === 'attention') return 'attention'
     if (def?.category === 'norm') return 'norm'
     if (def?.category === 'embedding') return 'embedding'
@@ -504,7 +505,7 @@ const CATEGORY_SCALING: Record<MemoryCategory, string> = {
 const CATEGORY_TERM: Record<MemoryCategory, string> = {
   attn_probs: 'attention probs',
   attention: 'attention tensors (Q, K, V, merged heads)',
-  ffn: 'SwiGLU tensors',
+  ffn: 'FFN tensors (SwiGLU / non-gated hidden activations)',
   norm: 'RMSNorm outputs',
   embedding: 'embedding tensors',
   logits: 'logits',

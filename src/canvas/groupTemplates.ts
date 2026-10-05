@@ -1,4 +1,4 @@
-// Group templates (PLAN.md §2.3): build a Transformer Block / MHA / SwiGLU frame with all its
+// Group templates (PLAN.md §2.3): build a Transformer Block / MHA / SwiGLU / non-gated FFN frame with all its
 // children (parts bound to the global hyperparams, proxies) and internal edges.
 //
 // Child positions are relative to the frame. Every frame has a fixed size: big enough for its
@@ -16,7 +16,7 @@
 //   │ │   └────────────┘    │    │            out            │
 //   │ add2 ←──┘             │    └───────────────────────────┘
 //   │ out                   │
-//   └───────────────────────┘
+//   └───────────────────────┘    FFN (non-gated): in → w1 → silu → w2 → out (one column)
 import type { XYPosition } from '@xyflow/react'
 import { GROUP_INPUT, GROUP_OUTPUT } from '../engine/groups'
 import type { ParamValue } from '../engine/types'
@@ -49,6 +49,11 @@ const FFN_W = 2 * PAD + 2 * PART_WIDTH + FFN_GAP
 const FFN_LAST_ROW = FIRST_ROW + 3 * ROW
 const FFN_H = FFN_LAST_ROW + PART_H + 40 + PROXY_HEIGHT + PAD
 
+// ---- FFN (non-gated, CS336 SiLU.py): one column w1 → act → w2 ----
+const PLAIN_W = 2 * PAD + PART_WIDTH + 2 * FFN_GAP
+const PLAIN_LAST_ROW = FIRST_ROW + 2 * ROW
+const PLAIN_H = PLAIN_LAST_ROW + PART_H + 40 + PROXY_HEIGHT + PAD
+
 // ---- Transformer Block: residual column on the left, sub-layers to the right ----
 const BLK_RES = PAD + PART_WIDTH / 2 // residual stream column (centre x)
 const BLK_BRANCH_X = PAD + PART_WIDTH + 56 // left edge of the MHA frame
@@ -68,6 +73,7 @@ export const GROUP_LAYOUT: Record<GroupType, { width: number; height: number; po
   transformer_block: { width: BLK_W, height: BLK_H, portX: BLK_RES / BLK_W },
   mha: { width: MHA_W, height: MHA_H, portX: 0.5 },
   swiglu: { width: FFN_W, height: FFN_H, portX: 0.5 },
+  ffn: { width: PLAIN_W, height: PLAIN_H, portX: 0.5 },
 }
 
 export interface Built {
@@ -168,6 +174,22 @@ export function buildGroup(type: GroupType, at: GroupPlacement, out: Built): voi
     return
   }
 
+  if (type === 'ffn') {
+    // Non-gated FFN (CS336 SiLU.py): w2(silu(w1 x)); the activation is an ordinary part (swap for GELU / ReLU).
+    const center = PLAIN_W / 2
+    proxy('in', center, PROXY_Y)
+    const row = (i: number) => FIRST_ROW + i * ROW
+    part('w1', 'linear', center, row(0), 'w1', { out_features: { bind: 'd_ff' } })
+    edge(IN, 'out', p('w1'), 'in')
+    part('act', 'silu', center, row(1), 'silu')
+    edge(p('w1'), 'out', p('act'), 'in')
+    part('w2', 'linear', center, row(2), 'w2', { in_features: { bind: 'd_ff' } })
+    edge(p('act'), 'out', p('w2'), 'in')
+    proxy('out', center, PLAIN_LAST_ROW + PART_H + 40)
+    edge(p('w2'), 'out', OUT, 'in')
+    return
+  }
+
   // Transformer Block (pre-norm): y = x + attn(ln1(x)); out = y + ffn(ln2(y))
   proxy('in', BLK_RES, PROXY_Y)
   part('ln1', 'rmsnorm', BLK_BRANCH, BLK_LN1, 'ln1')
@@ -189,12 +211,15 @@ export function buildGroup(type: GroupType, at: GroupPlacement, out: Built): voi
   edge(p('add2'), 'out', OUT, 'in')
 }
 
-/** A fresh group from the palette, with unique ids. New Transformer Blocks are numbered ("Block 3"). */
-export function instantiateGroup(type: GroupType, position: XYPosition, existing: AppNode[]): Built {
+/**
+ * A fresh group from the palette / quick-add, with unique ids. New Transformer Blocks are numbered ("Block 3").
+ * `parentId`: create it inside that group (a sub-layer inside a Transformer Block); `position` is then relative to it.
+ */
+export function instantiateGroup(type: GroupType, position: XYPosition, existing: AppNode[], parentId?: string): Built {
   const id = newId(type)
   const out: Built = { nodes: [], edges: [] }
   const title = type === 'transformer_block' ? nextBlockTitle(existing) : undefined
-  buildGroup(type, { id, prefix: `${id}.`, position, title }, out)
+  buildGroup(type, { id, prefix: `${id}.`, position, title, ...(parentId ? { parentId } : {}) }, out)
   return out
 }
 

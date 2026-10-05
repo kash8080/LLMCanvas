@@ -60,6 +60,8 @@ function parseHyperparams(raw: unknown): Hyperparams {
   if (!isObj(raw)) return hp
   for (const { key } of HYPERPARAM_INFO) if (isNum(raw[key]) && raw[key] > 0) hp[key] = raw[key]
   if (FLOAT_DTYPES.includes(raw.dtype as Hyperparams['dtype'])) hp.dtype = raw.dtype as Hyperparams['dtype']
+  // Phase 7c: saves from before weight tying have no field → untied (CS336).
+  if (typeof raw.tie_embeddings === 'boolean') hp.tie_embeddings = raw.tie_embeddings
   return hp
 }
 

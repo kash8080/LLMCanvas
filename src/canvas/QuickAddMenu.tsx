@@ -23,12 +23,16 @@ function QuickAddPanel({ state }: { state: QuickAddState }) {
   const close = useCanvasStore((s) => s.closeQuickAdd)
   const addNode = useCanvasStore((s) => s.addNode)
   const fromNode = useCanvasStore((s) => (state.from ? s.nodes.find((n) => n.id === state.from!.nodeId) : undefined))
+  const parentType = useCanvasStore((s) => {
+    const parent = state.parentId ? s.nodes.find((n) => n.id === state.parentId) : undefined
+    return parent?.type === 'group' ? parent.data.groupType : undefined
+  })
   const { screenToFlowPosition, getInternalNode } = useReactFlow()
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
 
   const from = state.from
-  const items = filterQuickAdd(quickAddItems(from?.type ?? null, !!state.parentId), query)
+  const items = filterQuickAdd(quickAddItems(from?.type ?? null, parentType), query)
   const current = Math.min(active, items.length - 1)
 
   const pick = (it: QuickAddItem | undefined) => {

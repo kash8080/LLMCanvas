@@ -4,6 +4,7 @@ import { flattenGroups, GROUP_INPUT, GROUP_OUTPUT, isProxyType } from '../engine
 import { inferShapes } from '../engine/infer'
 import { estimateMemory, type MemoryInput, type MemoryMode, type MemoryReport } from '../engine/memory'
 import { accountParams, type GroupInfo, type ParamReport } from '../engine/params'
+import { checkTying } from '../engine/tying'
 import type { GraphModel, Hyperparams, InferenceResult, NodeStatus, Shape } from '../engine/types'
 import { GROUP_DEFS } from '../nodes/groups'
 import { nodeRegistry } from '../nodes/registry'
@@ -46,10 +47,13 @@ export function toGraphModel(nodes: AppNode[], edges: Pick<AppEdge, 'id' | 'sour
   }
 }
 
-/** Shape inference for the canvas: flatten groups onto their proxies, infer, summarise groups, count params. */
+/**
+ * Shape inference for the canvas: flatten groups onto their proxies, check weight tying (engine/tying.ts),
+ * infer, summarise groups, count params.
+ */
 export function inferGraph(nodes: AppNode[], edges: AppEdge[], hp: Hyperparams): CanvasInference {
   const graph = flattenGroups(toGraphModel(nodes, edges))
-  const result = inferShapes(graph, hp, nodeRegistry)
+  const result = inferShapes(graph, hp, nodeRegistry, checkTying(graph, hp, nodeRegistry))
   const groups = nodes.flatMap((n) => (n.type === 'group' ? [{ id: n.id, type: n.data.groupType, ...(n.parentId ? { parentId: n.parentId } : {}) }] : []))
   return {
     ...result,

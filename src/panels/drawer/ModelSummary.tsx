@@ -7,6 +7,7 @@ import { HYPERPARAM_INFO } from '../../engine/hyperparams'
 import { nodeTitle } from '../../store/inference'
 import { useCanvasStore } from '../../store/useCanvasStore'
 import { CONNECTED_RULE } from '../analysis/ParamsTab'
+import { TIE_HELP } from '../HyperparamsMenu'
 import { DrawerBody, DrawerHeader, Pill, Section } from './ui'
 import { useFocusNode } from './useFocusNode'
 
@@ -39,7 +40,7 @@ export function ModelSummary() {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const parts = nodes.filter((n) => n.type === 'part' && !isProxyType(n.data.partType))
   const groups = nodes.filter((n) => n.type === 'group')
-  const { total: totalParams, unconnected, unconnectedIds } = inference.params
+  const { total: totalParams, unconnected, unconnectedIds, tied } = inference.params
   const layers = numLayers(nodes)
   const problems = nodes.flatMap((n) => {
     const r = n.type === 'part' ? inference.nodes[n.id] : undefined
@@ -75,6 +76,17 @@ export function ModelSummary() {
               breakdown
             </button>
           </p>
+          {tied.length > 0 && (
+            <p className="mt-1 text-[11px] text-slate-500" title={TIE_HELP}>
+              Weight tying: {tied.map((t) => (byId.get(t.id) ? nodeTitle(byId.get(t.id)!) : t.id)).join(', ')} shares{' '}
+              {byId.get(tied[0].to) ? nodeTitle(byId.get(tied[0].to)!) : tied[0].to}’s matrix — {tied.reduce((a, t) => a + t.params, 0).toLocaleString()} params counted once.
+            </p>
+          )}
+          {hp.tie_embeddings && tied.length === 0 && (
+            <p className="mt-1 text-[11px] text-amber-700" title={TIE_HELP}>
+              Weight tying is on but no LM head is tied (see Problems, or there is no Linear feeding Logits).
+            </p>
+          )}
           {unconnected > 0 && (
             <button
               type="button"
@@ -113,6 +125,7 @@ export function ModelSummary() {
               <HpRow key={info.key} name={info.key} symbol={info.symbol} value={hp[info.key].toLocaleString()} help={info.help} />
             ))}
             <HpRow name="dtype" symbol="" value={hp.dtype} help="Element type for weights and activations." />
+            <HpRow name="tie_embeddings" symbol="" value={hp.tie_embeddings ? 'on' : 'off'} help={TIE_HELP} />
             <HpRow name="d_head" symbol="d_model / H" value={Number.isInteger(dHead) ? String(dHead) : dHead.toFixed(2)} help="Derived: size of each attention head." />
             <HpRow name="num_layers" symbol="L" value={String(layers)} help="Derived: number of Transformer Blocks on the canvas." />
           </dl>

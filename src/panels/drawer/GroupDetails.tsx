@@ -9,10 +9,11 @@ import { ShapesSection } from './ShapesSection'
 import { GroupSizeSection } from './SizeSection'
 import { DrawerBody, DrawerHeader, ErrorBox, Section, StatusBadge } from './ui'
 
-/** Drawer for a group frame (Transformer Block / MHA / SwiGLU). Groups have no params: "Display" takes that slot. */
+/** Drawer for a group frame (Transformer Block / MHA / SwiGLU / non-gated FFN). Groups have no params: "Display" takes that slot. */
 export function GroupDetails({ node }: { node: GroupNode }) {
   const def = GROUP_DEFS[node.data.groupType]
   const summary = useCanvasStore((s) => s.inference.groups[node.id])
+  const hp = useCanvasStore((s) => s.hyperparams)
   const setTitle = useCanvasStore((s) => s.setTitle)
   const deleteText = useCanvasStore((s) => deleteLabel(node, s.nodes))
   const deleteElements = useDeleteElements()
@@ -49,7 +50,7 @@ export function GroupDetails({ node }: { node: GroupNode }) {
           outputs={[{ port: 'out', shape: summary?.outShape ?? null }]}
           unknownOut={errors.length > 0 ? 'not computed — fix the problems above' : undefined}
         />
-        <GroupSizeSection nodeId={node.id} summary={summary} paramFormula={def.docs.paramFormula} color={def.color} />
+        <GroupSizeSection nodeId={node.id} summary={summary} paramFormula={def.docs.paramFormula} standard={def.standardParams(hp)} color={def.color} />
         <PointsSection points={def.docs.pointsToRemember} />
         <ReferenceSection docs={def.docs} />
       </DrawerBody>

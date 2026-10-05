@@ -19,7 +19,20 @@ describe('drawer docs', () => {
     for (const key of Object.keys(docs.paramHelp ?? {})) expect(paramKeys).toContain(key)
   })
 
-  it('every palette part and group points at the CS336 code', () => {
-    for (const [name, docs] of entries) if (!name.startsWith('part group_')) expect(docs.cs336Ref, name).toBeDefined()
+  it('every palette part and group points at the CS336 code, or says why it is not there', () => {
+    for (const [name, docs] of entries) {
+      if (name.startsWith('part group_')) continue
+      expect(docs.cs336Ref ?? docs.cs336Note, name).toBeDefined()
+      if (!docs.cs336Ref) expect(docs.cs336Note, name).toMatch(/Not in the CS336 code.*variant for comparison/)
+    }
+  })
+
+  it('the Phase 7c variants are registered and documented', () => {
+    for (const t of ['layernorm', 'gelu', 'relu']) {
+      expect(nodeRegistry[t], t).toBeDefined()
+      expect(nodeRegistry[t].docs.cs336Note).toBeDefined()
+    }
+    expect(nodeRegistry.layernorm.docs.overview).toMatch(/RMSNorm/)
+    expect(GROUP_DEF_LIST.find((g) => g.type === 'ffn')?.docs.cs336Ref?.file).toBe('SiLU.py')
   })
 })

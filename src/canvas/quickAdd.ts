@@ -1,7 +1,7 @@
 // Quick-add menu (drop a connection on empty canvas, or "Add part…" in the canvas context menu):
 // which items can be created there, search, and where to put the new node. Pure, no React.
 import type { XYPosition } from '@xyflow/react'
-import { GROUP_DEF_LIST } from '../nodes/groups'
+import { GROUP_DEF_LIST, SUBLAYER_GROUP_TYPES, type GroupType } from '../nodes/groups'
 import { CATEGORY_INFO, NODE_DEFS } from '../nodes/registry'
 import { paletteItemSize } from './groupTemplates'
 import type { PaletteItemId } from './types'
@@ -19,15 +19,17 @@ export interface QuickAddItem {
 
 /**
  * Items that can be created at the drop point. Dragged from an output → things with an input;
- * from an input → things with an output (groups have both). Inside a group frame only plain parts
- * (group templates are too big to nest there). Annotations only when nothing gets connected (frames never
- * inside a group).
+ * from an input → things with an output (groups have both). `inside` = type of the group frame the new
+ * item goes into (undefined = top level): inside a Transformer Block the sub-layer groups (attention,
+ * SwiGLU, non-gated FFN) are offered too, so a block's FFN can be swapped; inside other groups only plain
+ * parts. Annotations only when nothing gets connected (frames never inside a group).
  */
-export function quickAddItems(from: DragFrom | null, insideGroup = false): QuickAddItem[] {
+export function quickAddItems(from: DragFrom | null, inside?: GroupType): QuickAddItem[] {
+  const insideGroup = inside !== undefined
   const parts = NODE_DEFS.filter((d) => (from === 'source' ? d.inputs.length > 0 : from === 'target' ? d.outputs.length > 0 : true)).map(
     (d): QuickAddItem => ({ item: `part:${d.type}`, label: d.label, group: CATEGORY_INFO[d.category].label, color: CATEGORY_INFO[d.category].color }),
   )
-  const groups = insideGroup ? [] : GROUP_DEF_LIST.map((g): QuickAddItem => ({ item: `group:${g.type}`, label: g.label, group: 'Group', color: g.color }))
+  const groups = GROUP_DEF_LIST.filter((g) => !insideGroup || (inside === 'transformer_block' && SUBLAYER_GROUP_TYPES.includes(g.type))).map((g): QuickAddItem => ({ item: `group:${g.type}`, label: g.label, group: 'Group', color: g.color }))
   const notes: QuickAddItem[] =
     from === null
       ? [

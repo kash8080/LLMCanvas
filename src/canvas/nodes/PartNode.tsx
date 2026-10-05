@@ -5,6 +5,7 @@ import { GROUP_INPUT, isProxyType } from '../../engine/groups'
 import { formatConcrete } from '../../engine/shape'
 import type { NodeResult, Shape } from '../../engine/types'
 import { CATEGORY_INFO, getNodeDef, highlightInfo } from '../../nodes/registry'
+import { nodeTitle } from '../../store/inference'
 import { useCanvasStore } from '../../store/useCanvasStore'
 import { glow, heatColor, partHeat, partHighlight } from '../highlight'
 import { lodSelector } from '../lod'
@@ -22,6 +23,12 @@ export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
   const lod = useStore(lodSelector)
   // false = has weights but doesn't feed Logits / Loss, so it isn't counted in the model total.
   const counted = useCanvasStore((s) => s.inference.params.parts[id]?.connected ?? true)
+  // Weight tying: title of the Embedding whose matrix this LM head reuses.
+  const tiedTo = useCanvasStore((s) => {
+    const to = s.inference.nodes[id]?.paramCount.tied?.to
+    const n = to ? s.nodes.find((x) => x.id === to) : undefined
+    return to ? (n ? nodeTitle(n) : to) : null
+  })
   if (!def) return <div className="rounded border border-red-400 bg-white p-2 text-xs text-red-600">Unknown part “{data.partType}”</div>
   if (isProxyType(def.type)) return <ProxyNode id={id} isInput={def.type === GROUP_INPUT} result={result} selected={selected} dim={highlight === 'dim'} />
 
@@ -63,6 +70,14 @@ export function PartNode({ id, data, selected }: NodeProps<PartNodeType>) {
             {title}
           </span>
           {status === 'error' && <AlertTriangle size={13} className="shrink-0 text-red-500" />}
+          {tiedTo !== null && result?.paramCount.tied && (
+            <span
+              className="ml-auto shrink-0 rounded bg-indigo-50 px-1 text-[10px] font-medium text-indigo-600"
+              title={`Weight tying: reuses ${tiedTo}’s matrix, so its ${result.paramCount.tied.params.toLocaleString()} weights are counted there (0 here).`}
+            >
+              tied
+            </span>
+          )}
           {params > 0 && (
             <span
               className={`ml-auto shrink-0 rounded px-1 text-[10px] font-medium tabular-nums ${counted ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-700'}`}

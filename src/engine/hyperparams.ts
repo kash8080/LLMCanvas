@@ -10,6 +10,7 @@ export const DEFAULT_HYPERPARAMS: Hyperparams = {
   rope_theta: 10000,
   batch_size: 32,
   dtype: 'fp32',
+  tie_embeddings: false,
 }
 
 export const FLOAT_DTYPES: FloatDType[] = ['fp32', 'bf16', 'fp16']

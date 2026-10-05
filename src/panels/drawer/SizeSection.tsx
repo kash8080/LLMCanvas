@@ -5,7 +5,7 @@ import { formatBytes, formatCount } from '../../engine/format'
 import type { MemoryReport, MemTensor } from '../../engine/memory'
 import { formatConcrete } from '../../engine/shape'
 import type { ParamCountResult } from '../../engine/types'
-import type { GroupSummary } from '../../store/inference'
+import { nodeTitle, type GroupSummary } from '../../store/inference'
 import { selectMemory, useCanvasStore } from '../../store/useCanvasStore'
 import { MEMORY_CATEGORY_INFO, PARAM_CATEGORY_INFO } from '../../nodes/registry'
 import { MODE_INFO, pct, savedText, saversText, tensorName, titleOf, type NodeIndex } from '../analysis/memoryText'
@@ -15,20 +15,37 @@ import { useFocusNode } from './useFocusNode'
 
 /** Size of one part: its weight tensors and how the count is computed. */
 export function PartSizeSection({ nodeId, title, count }: { nodeId: string; title?: string; count: ParamCountResult }) {
-  const { total, tensors } = count
+  const { total, tensors, tied } = count
+  const tiedTitle = useCanvasStore((s) => {
+    const n = tied ? s.nodes.find((x) => x.id === tied.to) : undefined
+    return n ? nodeTitle(n) : (tied?.to ?? '')
+  })
+  const own = tied ? tied.params : total
   const symbolic = tensors.map((t) => t.dims.map((d) => d.label ?? String(d.size)).join(' · ')).join(' + ')
   const concrete = tensors.map((t) => t.dims.map((d) => String(d.size)).join(' · ')).join(' + ')
 
   return (
-    <Section id="size" title="Size" meta={`${formatCount(total)} params`}>
+    <Section id="size" title="Size" meta={tied ? '0 params · tied' : `${formatCount(total)} params`}>
       <SubHeading>Parameters</SubHeading>
-      {total === 0 ? (
+      {own === 0 ? (
         <p className="text-xs text-slate-500">No learned parameters.</p>
       ) : (
         <>
           <TotalLine total={total} />
+          {tied && (
+            <div className="mb-2 rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs leading-snug text-indigo-800">
+              Weight tying is on: this LM head reuses <b>{tiedTo(tiedTitle)}</b>’s matrix (vocab_size × d_model), so its {tied.params.toLocaleString()} weights are
+              counted once, under the embedding — 0 here. Turn it off in Hyperparams (tie_embeddings).
+            </div>
+          )}
           <ModelShare nodeId={nodeId} />
-          <Formula lines={[`params = ${symbolic}`, `${symbolic === concrete ? '' : `= ${concrete} `}= ${total.toLocaleString()}`]} />
+          <Formula
+            lines={
+              tied
+                ? [`shared weight = ${symbolic}`, `${symbolic === concrete ? '' : `= ${concrete} `}= ${tied.params.toLocaleString()} (counted under ${tiedTitle})`]
+                : [`params = ${symbolic}`, `${symbolic === concrete ? '' : `= ${concrete} `}= ${total.toLocaleString()}`]
+            }
+          />
           <div className="mt-2 space-y-1">
             {tensors.map((t) => {
               const n = t.dims.reduce((a, d) => a * d.size, 1)
@@ -38,6 +55,7 @@ export function PartSizeSection({ nodeId, title, count }: { nodeId: string; titl
                     <span className="min-w-0 break-all text-slate-700">
                       {title ? `${title}.` : ''}
                       {t.name}
+                      {tied && <span className="font-sans text-indigo-600"> = {tiedTitle}.weight</span>}
                     </span>
                     <span className="ml-auto shrink-0 text-slate-500 tabular-nums">{n.toLocaleString()}</span>
                   </div>
@@ -57,7 +75,20 @@ export function PartSizeSection({ nodeId, title, count }: { nodeId: string; titl
 }
 
 /** Size of a group: total, its formula, and the per-child breakdown (click a row to select that child). */
-export function GroupSizeSection({ nodeId, summary, paramFormula, color }: { nodeId: string; summary?: GroupSummary; paramFormula?: string; color: string }) {
+export function GroupSizeSection({
+  nodeId,
+  summary,
+  paramFormula,
+  standard,
+  color,
+}: {
+  nodeId: string
+  summary?: GroupSummary
+  paramFormula?: string
+  /** Params of the standard template for the current hyperparams (GroupDef.standardParams). */
+  standard?: number
+  color: string
+}) {
   const focus = useFocusNode()
   const total = summary?.params ?? 0
   const max = Math.max(1, ...(summary?.breakdown.map((b) => b.params) ?? []))
@@ -67,7 +98,18 @@ export function GroupSizeSection({ nodeId, summary, paramFormula, color }: { nod
       <SubHeading>Parameters (sum of the parts inside)</SubHeading>
       <TotalLine total={total} />
       <ModelShare nodeId={nodeId} />
-      {paramFormula && <Formula lines={[`params = ${paramFormula}`, `= ${total.toLocaleString()}`]} />}
+      {paramFormula &&
+        (standard === undefined || standard === total ? (
+          <Formula lines={[`params = ${paramFormula}`, `= ${total.toLocaleString()}`]} />
+        ) : (
+          <>
+            <Formula lines={[`standard: ${paramFormula}`, `= ${standard.toLocaleString()}`]} />
+            <p className="mt-1 text-[11px] leading-snug text-amber-700">
+              This group differs from the standard template (a swapped part, e.g. a non-gated FFN or LayerNorm, or an overridden param):
+              {` ${total >= standard ? '+' : '−'}${Math.abs(total - standard).toLocaleString()}`}. The sum of its parts above is the real count.
+            </p>
+          </>
+        ))}
       <SubHeading>Breakdown</SubHeading>
       <div className="space-y-0.5">
         {summary?.breakdown.map((b) => (
@@ -95,6 +137,8 @@ export function GroupSizeSection({ nodeId, summary, paramFormula, color }: { nod
   )
 }
 
+const tiedTo = (title: string) => title || 'the embedding'
+
 function TotalLine({ total }: { total: number }) {
   return (
     <div className="mb-1.5 flex items-baseline gap-1.5">
@@ -111,6 +155,8 @@ function ModelShare({ nodeId }: { nodeId: string }) {
   const group = report.groups[nodeId]
   const counted = part ? (part.connected ? part.params : 0) : (group?.connected ?? 0)
   const uncounted = part ? (part.connected ? 0 : part.params) : (group?.unconnected ?? 0)
+  // Weight tying: this Embedding's matrix is also the LM head's weight.
+  const shared = report.tied.some((t) => t.to === nodeId)
   if (counted === 0 && uncounted === 0) return null
   const share = report.total > 0 ? `${((counted / report.total) * 100).toFixed(1)}%` : '—'
   return (
@@ -127,6 +173,7 @@ function ModelShare({ nodeId }: { nodeId: string }) {
           )}
         </div>
       )}
+      {shared && <div className="text-indigo-700">Also the LM head’s weight (weight tying): the matrix is counted once, here.</div>}
       {uncounted > 0 && (
         <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">
           {uncounted.toLocaleString()} params not counted in the model total: {part ? 'this part doesn’t' : 'these parts don’t'} feed Logits / Loss.

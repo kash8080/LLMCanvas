@@ -471,3 +471,55 @@ new node kind; make their create / move / resize / rename / recolour go through 
 - Editing `src/canvas/frames.ts` during `pnpm dev` triggers a full reload (the store imports it).
 
 **Next:** 7c — part variants (LayerNorm, GELU, ReLU, non-gated FFN) + docs, weight-tying toggle (lm_head shares embedding).
+
+## 2026-10-05 — Session 11: Phase 7c (part variants, non-gated FFN, weight tying)
+**Done**
+- New part types (one file each, registered in `NODE_DEFS` → palette + quick-add for free): `layernorm.ts` (d_model, eps;
+  γ + β = 2·d; saves input + per-token mean + rstd), `gelu.ts` (saves input), `relu.ts` (saves its **output**, like
+  PyTorch; w2 keeps the same tensor so it is stored once — a ReLU FFN keeps 1 B·T·d_ff tensor vs 2 for SiLU/GELU and 4 for
+  SwiGLU). Part types are not node kinds: no changes to NODE_KINDS / persistence kinds / nodeTypes / minimap were needed.
+  `NodeDocs.cs336Note` replaces `cs336Ref` for parts not in CS336 ("Not in the CS336 code …; variant for comparison"),
+  rendered in the drawer's "CS336 reference" section; `docs.test.ts` accepts either. Palette category "Feed-forward
+  (SwiGLU)" → "Feed-forward".
+- Group type `ffn` = "FFN (non-gated)" (`GROUP_TYPES`, `GROUP_DEFS`, `GROUP_LAYOUT`, `buildGroup` branch): in → w1
+  (d_model→d_ff) → act (`silu`, id `<g>.act`) → w2 → out; w1/w2 bind to the global d_ff; 2·d·d_ff = 1,376,256; docs cite
+  `SiLU.py`. `params.ts` / `memory.ts` classify parts inside `ffn` groups as FFN. `GroupDef.standardParams(hp)` lets the
+  group drawer flag a group whose parts differ from its template ("standard … = 3,113,984 · −688,128").
+- Swapping a block's FFN: quick-add inside a **Transformer Block** now offers the sub-layer groups (MHA / SwiGLU / FFN);
+  `quickAddItems(from, inside?: GroupType)`; `instantiateGroup(type, pos, nodes, parentId?)` and `addNode` create nested
+  groups (one undo step). Flow: delete the SwiGLU, drag from ln2's output onto the empty block area → "non-gated" →
+  Enter → connect its out to `x + ffn`. Same for swapping the activation inside the FFN (delete silu, drag from w1 → GELU).
+- Weight tying: hyperparam `tie_embeddings` (default false; `HyperparamKey` excludes it), checkbox in the Hyperparams
+  popover, row in the drawer summary + a "Weight tying: lm_head shares token_embeddings’s matrix" line. `src/engine/tying.ts`
+  `checkTying(graph, hp, defs)` runs in `inferGraph` and is passed to `inferShapes(…, tying)`: valid ties set the LM head's
+  `paramCount` to `{total: 0, tied: {to, params}}`; problems become part errors. `ParamReport.tied`, `PartParams.tiedTo`
+  (tied heads stay in `parts` / rows with 0), `formula.tied` (drops `+ d·V`), `formula.notes` (non-gated FFN, LayerNorm,
+  tying not applied). UI: "tied" badge on the part, drawer Size box ("reuses token_embeddings’s matrix … 0 here",
+  `lm_head.weight = token_embeddings.weight`), embedding drawer "also the LM head’s weight", Params tab "LM head tied · 0"
+  chip + row + formula footnote + insight, Memory tab P note. `setHyperparam` records booleans without a coalescing key
+  (each click = one undo step). Persistence: `parseHyperparams` reads the boolean; no version bump.
+- Tests: `src/engine/variants.test.ts` (LayerNorm 2·d / tensors / saved / mismatch / ln_final swap note; GELU & ReLU
+  shapes and saved tensors; FFN group 1,376,256; Block 1 swap = 15,780,352 with FFN 3,440,640 and a formula note; own
+  d_ff 2048 → 8·d²; memory −2·B·T·d_ff and weights; ReLU output stored once; tying 11,348,480, formula, memory weights
+  45,393,920 and −4·5.12M·4 in Train; mismatch error + note; no-embedding error; persistence with/without the field),
+  `src/store/variants.test.ts` (swap through store actions incl. ln2 briefly unconnected, undo ×3; tie toggle undo/redo,
+  Reset → untied), quick-add + docs tests extended. 164 tests pass; `pnpm build` passes.
+- Browser-checked at 1440×900: toggle → Params 11.35M / Mem 1.43 GB, formula ✓ without `+ d·V`, "LM head tied · 0", lm_head
+  "tied" badge + drawer Size text, Memory formulas with P = 11,348,480; toggle off → undo (toolbar) → redo (⇧⌘Z); Block 1
+  SwiGLU deleted → quick-add "FFN (non-gated)" inside the block from ln2 → wired to `x + ffn` → 15.78M / 1.42 GB, analysis
+  diff + "Why: 1 non-gated FFN …", Block 1 drawer "standard … −688,128"; silu → GELU swap inside the FFN; LayerNorm (1.02K,
+  amber unconnected) and ReLU dropped from the palette and wired; reload kept the state; no console errors. User's
+  saved canvas backed up and restored byte-identical (20,644 chars).
+
+**Gotchas**
+- Loading an old save with the new code re-saves it right away with `"tie_embeddings":false` (React Flow's dimension
+  changes trigger autosave) — harmless, but when restoring a backup do it after the page is idle and before reloading.
+- A tying error puts lm_head in `error`, so Logits / Cross-Entropy / Loss become unknown and memory skips them (consistent
+  with other part errors, but the Mem number drops a lot until it's fixed).
+- After deleting a block's FFN, ln2 shows as "unconnected" (amber) until the new FFN is wired to `x + ffn`.
+- ⌘Z is ignored while focus is in an input — including the tie_embeddings checkbox; click the canvas (or use the toolbar).
+- Editing `src/engine/params.ts` during `pnpm dev` full-reloads the page (history lost, state comes back from localStorage).
+
+**Next:** 7d — KV-cache estimate for generation (memory): 2 · L · B · T · d_model · bytes (K and V per layer; per
+attention group from the MHA's k/v projections), probably a new memory mode or a "generation" sub-section in the Memory
+tab. Note `HyperparamKey` excludes non-numeric hyperparams; tying doesn't affect the KV cache.

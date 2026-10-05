@@ -160,6 +160,7 @@ function Components({ report }: { report: MemoryReport }) {
 
 function Formulas({ report, byId }: { report: MemoryReport; byId: NodeIndex }) {
   const f = memoryFormulas(report)
+  const tiedParams = useCanvasStore((s) => s.inference.params.tied.reduce((a, t) => a + t.params, 0))
   const peak = report.activations.peakPart
   const lines = MEMORY_COMPONENTS.map((c) => {
     let text = f[c]
@@ -182,6 +183,12 @@ function Formulas({ report, byId }: { report: MemoryReport; byId: NodeIndex }) {
       </div>
       <p className="mt-1 text-[11px] text-slate-400">
         P = {report.P.toLocaleString()} connected params · bytes = {report.b} per value (int64 token ids: 8)
+        {tiedParams > 0 && (
+          <span className="text-indigo-600">
+            {' '}
+            · weight tying: the shared embedding / LM head matrix is in P once (weights, its gradient and AdamW state: −{tiedParams.toLocaleString()} params)
+          </span>
+        )}
       </p>
     </div>
   )

@@ -243,7 +243,8 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
       let nextEdges: AppEdge[] = edgesOff
       if (isGroupItem(item)) {
         // A whole template: frame + children + internal edges; only the frame is selected.
-        const built = instantiateGroup(item.slice(6) as GroupType, position, nodes)
+        // With `parentId` it is nested (a sub-layer inside a Transformer Block, e.g. swapping its FFN).
+        const built = instantiateGroup(item.slice(6) as GroupType, position, nodes, opts.parentId)
         const [frame, ...children] = built.nodes
         added = [{ ...frame, selected: true }, ...children]
         nextEdges = [...edgesOff, ...built.edges]
@@ -315,7 +316,8 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
 
     setHyperparam: (key, value) => {
       if (get().hyperparams[key] === value) return
-      remember(`hp:${key}`)
+      // Typed numbers coalesce into one step; a toggle (tie_embeddings) is one step per click.
+      remember(typeof value === 'boolean' ? undefined : `hp:${key}`)
       commit({ hyperparams: { ...get().hyperparams, [key]: value } })
     },
 

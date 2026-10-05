@@ -90,9 +90,14 @@ function FormulaBlock({ report }: { report: ParamReport }) {
       </div>
       <p
         className="mt-1 text-[11px] leading-snug text-slate-400"
-        title="Terms: embedding V·d + L × (attention 4d² + SwiGLU 3d·d_ff + two RMSNorms 2d) + ln_final d + lm_head d·V"
+        title={`Terms: embedding V·d + L × (attention 4d² + SwiGLU 3d·d_ff + two RMSNorms 2d) + ln_final d${f.tied ? ' (lm_head tied: reuses the embedding, no d·V term)' : ' + lm_head d·V'}`}
       >
-        V = vocab_size · d = d_model · L = {f.L} connected Transformer Block{f.L === 1 ? '' : 's'} · no biases, no weight tying
+        V = vocab_size · d = d_model · L = {f.L} connected Transformer Block{f.L === 1 ? '' : 's'} · no biases ·{' '}
+        {f.tied ? (
+          <span className="text-indigo-600">weight tying on: lm_head reuses the embedding, so the + d·V term is dropped</span>
+        ) : (
+          'no weight tying'
+        )}
       </p>
       {!f.matches && (
         <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-800">
@@ -104,6 +109,13 @@ function FormulaBlock({ report }: { report: ParamReport }) {
               </li>
             ))}
           </ul>
+          {f.notes.length > 0 && (
+            <ul className="mt-1 space-y-0.5 border-t border-amber-200 pt-1">
+              {f.notes.map((n) => (
+                <li key={n}>Why: {n}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
@@ -139,6 +151,16 @@ function CategoryBreakdown({ report }: { report: ParamReport }) {
         {cats.map((c) => (
           <LegendChip key={c} k={c} value={report.byCategory[c]} share={pct(report.byCategory[c], report.total)} active={highlight === c} dimmed={dimmed(c)} onClick={() => toggle(c)} />
         ))}
+        {report.tied.length > 0 && (
+          <span
+            className="flex items-center gap-1.5 rounded-full border border-dashed border-slate-200 px-2 py-0.5 text-xs"
+            title={`Weight tying: the LM head reuses the embedding matrix, so it adds 0 (would be ${report.tied.reduce((a, t) => a + t.params, 0).toLocaleString()} untied)`}
+          >
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: PARAM_CATEGORY_INFO.lm_head.color }} />
+            <span className="font-medium text-slate-700">{PARAM_CATEGORY_INFO.lm_head.label}</span>
+            <span className="text-indigo-600">tied · 0</span>
+          </span>
+        )}
         {report.unconnected > 0 && (
           <LegendChip k="unconnected" value={report.unconnected} share="not counted" active={highlight === 'unconnected'} dimmed={dimmed('unconnected')} onClick={() => toggle('unconnected')} dashed />
         )}
@@ -202,7 +224,9 @@ function LayerList({ report }: { report: ParamReport }) {
           const node = byId.get(r.id)
           const title = node ? nodeTitle(node) : r.id
           const cats = PARAM_CATEGORIES.filter((c) => r.byCategory[c] > 0)
-          const sub = r.isLayer ? 'Transformer Block' : cats.map((c) => PARAM_CATEGORY_INFO[c].label).join(' + ')
+          const tied = report.tied.find((t) => t.id === r.id)
+          const tiedTo = tied && byId.get(tied.to) ? nodeTitle(byId.get(tied.to)!) : tied?.to
+          const sub = r.isLayer ? 'Transformer Block' : tied ? `LM head · tied to ${tiedTo}` : cats.map((c) => PARAM_CATEGORY_INFO[c].label).join(' + ')
           return (
             <button
               key={r.id}

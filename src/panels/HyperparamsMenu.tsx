@@ -61,6 +61,17 @@ export function HyperparamsMenu() {
                   ))}
                 </select>
               </Row>
+              <Row label="tie_embeddings" symbol="" help={TIE_HELP}>
+                <label className="flex cursor-pointer items-center gap-1.5 px-0.5 text-[11px] text-slate-500" title={TIE_HELP}>
+                  <input
+                    type="checkbox"
+                    checked={hp.tie_embeddings}
+                    onChange={(e) => setHyperparam('tie_embeddings', e.target.checked)}
+                    className="accent-indigo-600"
+                  />
+                  {hp.tie_embeddings ? 'tied' : 'off (CS336)'}
+                </label>
+              </Row>
               <Row label="d_head" symbol="d_model / H" help="Derived: size of each attention head.">
                 <span className="px-1.5 font-mono text-slate-500">{Number.isInteger(dHead) ? dHead : dHead.toFixed(2)}</span>
               </Row>
@@ -86,6 +97,9 @@ export function HyperparamsMenu() {
     </div>
   )
 }
+
+export const TIE_HELP =
+  'Weight tying: the LM head (the Linear feeding Logits) reuses the token embedding matrix (V × d_model) instead of its own, so those d_model · V weights are counted once. Needs lm_head = d_model → vocab_size. CS336 does not tie (off).'
 
 function Row({ label, symbol, help, children }: { label: string; symbol: string; help: string; children: React.ReactNode }) {
   return (

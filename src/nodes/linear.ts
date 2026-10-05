@@ -29,7 +29,7 @@ export const linear: NodeDef = {
       k_proj: 'k_proj (W_K): turns each token into a key — what this token offers to be matched on.',
       v_proj: 'v_proj (W_V): turns each token into a value — the content attention mixes together.',
       output_proj: 'output_proj (W_O): mixes the concatenated heads and writes the result back to the residual stream.',
-      w1: 'w1: up-projection d_model → d_ff; its output goes through SiLU and acts as the gate.',
+      w1: 'w1: up-projection d_model → d_ff; its output goes through the activation (SiLU). In SwiGLU that branch is the gate; in the non-gated FFN it goes straight to w2.',
       w3: 'w3: second up-projection d_model → d_ff; it is multiplied by the gate.',
       w2: 'w2: down-projection d_ff → d_model, back to the residual stream.',
       lm_head: 'lm_head: maps the final hidden state to one score per vocabulary entry (d_model → vocab_size).',

@@ -10,11 +10,16 @@
 // container (`parentId`), and its outer ports are bridged by ordinary pass-through proxy nodes
 // (see docs/PROGRESS.md, Session 3).
 import { resolveParams, validateParams } from './resolve'
+import { NO_TYING, type TyingCheck } from './tying'
 import type { GraphModel, Hyperparams, InferenceResult, NodeDef, NodeResult, Shape } from './types'
 
 const EMPTY_COUNT = { total: 0, tensors: [] }
 
-export function inferShapes(graph: GraphModel, hp: Hyperparams, defs: Record<string, NodeDef>): InferenceResult {
+/**
+ * `tying` (engine/tying.ts, from `checkTying`): LM heads that share the Embedding's weight get a param
+ * count of 0 (with `tied` set); tying problems become errors on those parts.
+ */
+export function inferShapes(graph: GraphModel, hp: Hyperparams, defs: Record<string, NodeDef>, tying: TyingCheck = NO_TYING): InferenceResult {
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
   // Only edges between known nodes take part.
   const edges = graph.edges.filter((e) => nodeById.has(e.source) && nodeById.has(e.target))
@@ -57,8 +62,10 @@ export function inferShapes(graph: GraphModel, hp: Hyperparams, defs: Record<str
     }
 
     const resolved = resolveParams(def, node.params, hp)
-    const paramCount = def.paramCount(resolved, hp)
-    const errors: string[] = validateParams(def, node.params)
+    const own = def.paramCount(resolved, hp)
+    const tiedTo = tying.tied[id]
+    const paramCount = tiedTo ? { ...own, total: 0, tied: { to: tiedTo, params: own.total } } : own
+    const errors: string[] = [...validateParams(def, node.params), ...(tying.errors[id] ?? [])]
     const inputShapes: (Shape | null)[] = []
     let upstreamUnknown = false
 

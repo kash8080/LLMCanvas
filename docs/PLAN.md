@@ -147,12 +147,15 @@ Mirrors CS336 `cs336_basics`. Shapes use `B`=batch, `T`=seq len, `d`=d_model, `H
 | Data Batch | batch_size, seq_len | — → `input_ids B×T`, `targets B×T` (int) | 0 | DataLoading.py |
 | Embedding | vocab_size, d_model | `B×T` → `B×T×d` | V·d | Embedding.py |
 | RMSNorm | d_model, eps | `B×T×d` → same | d | RMSNorm.py |
+| LayerNorm *(7c variant)* | d_model, eps | `B×T×d` → same | 2d (γ, β) | not in CS336 (variant for comparison) |
 | Linear | in_features, out_features (no bias) | `…×in` → `…×out` | in·out | Linear.py |
 | Split Heads | num_heads | `B×T×d` → `B×H×T×dh` | 0 | MHA reshape |
 | RoPE | head_dim, theta, max_seq_len | `B×H×T×dh` → same | 0 (buffers only) | RotaryPositionalEmbedding.py |
 | Scaled Dot-Product Attn | causal (bool) | Q,K,V `B×H×T×dh` → `B×H×T×dh` | 0 | ScaledDotProductAttention.py |
 | Merge Heads | — | `B×H×T×dh` → `B×T×d` | 0 | MHA reshape |
 | SiLU | — | same → same | 0 | SwiGLU.silu |
+| GELU *(7c variant)* | — | same → same | 0 | not in CS336 (variant) |
+| ReLU *(7c variant)* | — | same → same | 0 | not in CS336 (variant) |
 | Multiply (⊙) | — | 2 same-shape → same | 0 | SwiGLU |
 | Add (residual) | — | 2 same-shape → same | 0 | TransformerBlock |
 | Softmax | dim | same → same | 0 | Softmax.py |
@@ -161,6 +164,7 @@ Mirrors CS336 `cs336_basics`. Shapes use `B`=batch, `T`=seq len, `d`=d_model, `H
 | Loss | — | scalar sink | 0 | |
 | **Group:** Multi-Head Self-Attention | d_model, num_heads, rope on/off | `B×T×d` → `B×T×d` | 4·d² | MultiHeadSelfAttention.py |
 | **Group:** SwiGLU FFN | d_model, d_ff | `B×T×d` → `B×T×d` | 3·d·F | SwiGLU.py |
+| **Group:** FFN (non-gated) *(7c)* | w1 → act (SiLU, swappable) → w2; d_ff bound to global | `B×T×d` → `B×T×d` | 2·d·F (1,376,256 default) | SiLU.py |
 | **Group:** Transformer Block | — | `B×T×d` → `B×T×d` | 4d² + 3dF + 2d | TransformerBlock.py |
 | Sticky note / Text box | bg color, text color, font size | — | — | |
 
@@ -172,6 +176,16 @@ Default hyperparams = CS336 `train.py` except **2 layers** (user decision):
 
 Sanity check (unit test): default params = 5,120,000 (emb) + 2 × 3,113,984 (blocks) + 512 (ln_final)
 + 5,120,000 (lm_head) = **16,468,480** (no weight tying, as in CS336). With 4 blocks it would be 22,696,448.
+With `tie_embeddings` on: 16,468,480 − 5,120,000 = **11,348,480**.
+
+**Variants (Phase 7c).** Part-type files `layernorm.ts`, `gelu.ts`, `relu.ts` (registered → palette + quick-add
+automatically); docs use `cs336Note` instead of `cs336Ref` ("Not in the CS336 code …; variant for comparison").
+Saved for backward: LayerNorm → input + per-token mean + rstd; GELU → input; ReLU → its **output** (PyTorch reads the
+sign pattern from the result; the next Linear keeps the same tensor, so it is stored once — a bool mask would be
+1 B/value, not modelled). FFN (non-gated) is group type `ffn` (`src/nodes/groups.ts`, template in
+`groupTemplates.ts`); a different width = unlink w1.out_features and w2.in_features (e.g. 2048 = 4·d_model).
+Swapping a block's FFN: delete its SwiGLU group, drop a connection from ln2 on the empty block area → quick-add
+offers the sub-layer groups (MHA / SwiGLU / FFN) **inside a Transformer Block** → wire its out to `x + ffn`.
 
 ---
 
@@ -184,15 +198,27 @@ Sanity check (unit test): default params = 5,120,000 (emb) + 2 × 3,113,984 (blo
 - **Model = connected parts** (`src/engine/params.ts`): a part counts when it feeds a Logits or Loss part
   (reverse walk over the flattened graph). Others are "unconnected" — shown as `+X in N unconnected parts,
   not counted` (toolbar, summary, panel, amber badges). No Logits/Loss on the canvas → everything counts.
-- Categories: Embedding (Embedding parts), Attention (inside an MHA group), FFN (inside a SwiGLU group),
-  Norms (RMSNorm), LM head (a Linear feeding Logits), Other (anything else with weights).
+- Categories: Embedding (Embedding parts), Attention (inside an MHA group), FFN (inside a SwiGLU or non-gated FFN
+  group), Norms (RMSNorm / LayerNorm), LM head (a Linear feeding Logits), Other (anything else with weights).
+- **Weight tying** (global hyperparam `tie_embeddings`, default **false** as in CS336; Hyperparams popover, shown in
+  the drawer summary; undoable; persisted — older saves load as false). `src/engine/tying.ts` (`checkTying`, run in
+  `inferGraph` before `inferShapes`): each LM head (Linear → Logits) shares the weight of the nearest Embedding
+  upstream. Valid only when lm_head is `d_model → vocab_size` matching the embedding's `vocab_size × d_model`; then its
+  `paramCount.total` = 0 with `tied: {to, params}`, so badges ("tied"), group sums, categories (LM head = 0, "tied · 0"
+  chip, row "tied to …"), totals and memory (P) all count the matrix once. Mismatch / no embedding upstream → an error
+  on the lm_head part (status error, downstream unknown, like any part error) and nothing is tied. The formula drops
+  the `+ d·V` term when tying is on.
+- Formula notes: when the canvas differs, `formula.notes` explains known causes (non-gated FFN 2·d·d_ff vs SwiGLU,
+  LayerNorm 2·d vs RMSNorm d, tying on but not applied). Group drawers compare the sum with
+  `GroupDef.standardParams(hp)` and flag a group that differs from its template.
 - `L` in the formula = connected Transformer Blocks. The formula "matches" only when every category equals
   its term; otherwise it is labelled "standard CS336 formula" and the per-category differences are listed
   (the per-part sum is always the real count).
 
 ## 5. Memory estimation (R8)
 Educational estimate, not allocator-exact (`src/engine/memory.ts`). `bytes(dtype)` = 4 (fp32) / 2 (bf16/fp16);
-int64 tensors (token ids, targets) are always 8. P = connected params (§4). Only **connected** parts count
+int64 tensors (token ids, targets) are always 8. P = connected params (§4; with weight tying the shared
+embedding / LM head matrix is in P once, so weights, gradients and AdamW state shrink by 4·V·d·b in Train). Only **connected** parts count
 (`ParamReport.connectedIds`).
 
 | Component | Fwd (inference) | Fwd+Bwd | Train (AdamW) |
@@ -210,7 +236,8 @@ MHA group counts on its own). Default: 2 · 2 · 256 · 16 · 4 = 65,536 B.
 **Saved-for-backward** is declared per node type and counted **once per unique tensor**. A tensor is identified by
 its producing part + output port after skipping pass-throughs (group in/out proxies, Logits); internal tensors by the
 part that creates them. So the RMSNorm output feeding Q, K and V is stored once — a nice teaching point.
-Linear → its input; RMSNorm → input + rms; SiLU → input; Multiply → both inputs;
+Linear → its input; RMSNorm → input + rms; LayerNorm → input + mean + rstd; SiLU / GELU → input; ReLU → its output
+(shared with the next Linear's saved input); Multiply → both inputs;
 SDPA → Q, K, V and the attention probabilities `B×H×T×T`; Softmax → output;
 Cross-Entropy → logits `B×T×V` + targets; Embedding → token ids; Add / reshape / RoPE → nothing.
 Attribution: a tensor belongs to the part that **produced** it (internal ones: the part that saves them; Data Batch
@@ -292,7 +319,9 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
 - [x] 7a. Drop a connection on empty canvas → quick-add menu that creates a part and auto-connects it
 - [x] 7b. User-made visual frames (Miro-style, no ports): titled, coloured, resizable, moves what's inside
       (no parenting: a drag carries the top-level items fully inside the frame — see §2.4; duplicate copies the frame only)
-- [ ] 7c. Extra part variants: LayerNorm, GELU, ReLU, non-gated FFN (CS336 `SiLU.py`) + docs; weight-tying toggle (lm_head shares embedding)
+- [x] 7c. Extra part variants: LayerNorm, GELU, ReLU, non-gated FFN (CS336 `SiLU.py`) + docs; weight-tying toggle (lm_head shares embedding)
+      (partial by design: the FFN group has no own d_ff param — w1/w2 bind to the global d_ff and are unlinked per part;
+      palette drops onto an expanded block still land top-level — use quick-add inside the block; no post-norm block template)
 - [ ] 7d. KV-cache estimate for generation (memory)
 
 ---
