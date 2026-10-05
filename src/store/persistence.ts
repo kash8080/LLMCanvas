@@ -9,6 +9,8 @@ export const STORAGE_KEY = 'llm-canvas:v1'
 /**
  * v1 = Phase 1 (placeholder parts, no hyperparams). v2 = Phase 2 (registry parts + hyperparams, flat).
  * v3 = Phase 3 (group frames; children carry parentId and come after their parent).
+ * Phase 7b added the 'frame' node kind (user-made frames, always top-level) without a version bump:
+ * older v3 saves simply have no frames and still load.
  */
 export const DOC_VERSION = 3
 
@@ -86,6 +88,12 @@ export function parseDocument(raw: unknown): CanvasDocument {
       if (!GROUP_MODES.includes(n.data.mode as never)) throw new Error(`Node "${n.id}" has an invalid mode.`)
       if (!isNum(n.width) || !isNum(n.height)) throw new Error(`Group "${n.id}" has no size.`)
       groupIds.add(n.id)
+    }
+    if (n.type === 'frame') {
+      if (n.data.title != null && !isStr(n.data.title)) throw new Error(`Frame "${n.id}" has an invalid title.`)
+      if (!isStr(n.data.bgColor) || !isStr(n.data.borderColor)) throw new Error(`Frame "${n.id}" has invalid colours.`)
+      if (!isNum(n.width) || !isNum(n.height)) throw new Error(`Frame "${n.id}" has no size.`)
+      if (n.parentId != null) throw new Error(`Frame "${n.id}" can't be inside another node.`)
     }
     // React Flow needs parents before their children in the nodes array.
     if (n.parentId != null && (!isStr(n.parentId) || !groupIds.has(n.parentId)))

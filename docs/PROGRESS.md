@@ -421,3 +421,53 @@ user frames, more part variants, KV-cache estimate), or persisting mode/checkpoi
 
 **Next:** 7b — user-made visual frames (Miro-style, titled, coloured, resizable, move what's inside). Frames should be a
 new node kind; make their create / move / resize / rename / recolour go through store actions with `remember()`.
+
+## 2026-10-05 — Session 10: Phase 7b (user-made frames)
+**Done**
+- New node kind `frame` (`FrameData = {title?, bgColor, borderColor}`, `src/canvas/types.ts`), always top-level, no ports.
+  `createFrameNode` / default 480×320 (`nodeFactory.ts`), `FrameNode.tsx` (tinted rectangle + NodeResizer when selected;
+  title just above the top-left corner, double-click to rename inline), registered in `nodeTypes.ts`.
+- **Moving a frame moves what's inside — approach (b), no parenting** (`src/canvas/frames.ts`, pure):
+  `frameFollowChanges(changes, nodes, captured)` runs in `onNodesChange`. For a frame position change carrying React Flow's
+  `dragging` flag (drag or arrow-key nudge), the top-level items fully inside the frame (`itemsInFrame`, captured at drag
+  start so items passed over aren't picked up) get the same delta in the same batch → one undo step via the existing
+  gesture tracking. NodeResizer position changes have no `dragging` flag, so resizing never moves contents. Items already
+  moving (selected with the frame) aren't moved twice; nested frames (fully inside) come along. Children of groups move
+  with their group. Because nothing is parented, connection rules, `flattenGroups`, inference, persistence order,
+  duplicate and delete needed no changes; items in a frame connect freely to items outside.
+- Z-order (`withFrameLayers`, display-only in Canvas's `useMemo`): frames get `zIndex = -1,000,000 + i·1001`, biggest first,
+  so they're below all nodes and edges even when selected (React Flow adds +1000 on select; the 1001 step keeps an inner
+  frame above a selected outer one). Clicking an item inside selects the item; empty frame area / title selects the frame.
+- Store: `updateFrame(id, {bgColor|borderColor})` (`remember('frame:<id>:<keys>')`), `setTitle` handles frames,
+  `frameSelection(ids?)` (top-level ancestors of the selection → `frameBoxAround` + 40 px padding, new frame selected,
+  one undo step), `addNode` keeps frames top-level even with `parentId`.
+- UI: palette Annotations → "Frame"; quick-add "Frame" (no connection, not inside groups); context menu: selection →
+  "Frame selection", node → "Put in a frame" / "Put its top-level group in a frame", frame → Add part here…, Show details,
+  Duplicate frame, Select the N items inside, "Delete frame only", "Delete frame + N items inside". Drawer `FrameDetails`:
+  rename, background (soft *-50 tints + transparent/white) and border swatches, "Inside" list (click = focus) + "Delete frame
+  and its N items", trash = frame only. A connection dropped on a frame's empty area counts as empty canvas (quick-add).
+  Minimap draws frames translucent.
+- Low zoom: `frameTitleFontSize(zoom, width, title)` = 13 px on screen (13/zoom flow px), capped so the title isn't wider than
+  the frame — frames work as region labels in the overview.
+- Persistence: no version bump (old v3 saves have no frames and still load); `parseDocument` validates frames (title string,
+  colours, width/height, no `parentId`).
+- Tests: `src/canvas/frames.test.ts` (box fallbacks, containment incl. edge-touching / children / nested frames, top-level
+  mapping, padded bounds, drag follow + capture, no double move, resize ignored, arrow nudge, z layers, title size) and
+  `src/store/frames.test.ts` (frame a Block + part with params / memory unchanged, drag moves Block 1 + embed with edges and
+  16,468,480 intact and undo/redo, resize keeps contents, rename / recolour / delete-frame-only undo, frames never inside
+  groups, duplicate = frame only, persistence round-trip + validation). 135 tests pass; `pnpm build` passes.
+- Browser-checked at 1440×900: palette drop, "Put in a frame" on Block 1, Shift-click Block 2 + a frame → "Frame selection",
+  dragging frames (Block / nested frame follow, edges intact, ⌘Z / ⇧⌘Z one step), inline rename, colours, bottom-right resize
+  (contents stay, undo), click inside selects the part / click empty frame area selects the frame, Delete = frame only + undo,
+  "Delete frame + 2 items" + undo, connection dropped on a frame → quick-add, quick-add "Frame", ~0.1 zoom titles readable,
+  reload persists, no console errors. User's saved canvas backed up and restored.
+
+**Gotchas**
+- A frame's title sits outside its box (above the top-left corner) and below everything in z, so an edge or node passing
+  there covers it (double-click a free part of the title). Arrow-key nudges also move contents but, like before, aren't undo steps.
+- At low zoom NodeResizer handles are tiny; a near miss drags the frame (and its contents) instead.
+- Dragging a big frame's body moves it (like group frames), so you can't pan by dragging inside a frame — use two-finger scroll.
+- Synthetic Shift for multi-select in the browser pane: dispatch `keydown` Shift on `document` before the click, `keyup` after.
+- Editing `src/canvas/frames.ts` during `pnpm dev` triggers a full reload (the store imports it).
+
+**Next:** 7c — part variants (LayerNorm, GELU, ReLU, non-gated FFN) + docs, weight-tying toggle (lm_head shares embedding).

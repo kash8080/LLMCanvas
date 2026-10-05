@@ -63,6 +63,7 @@ export function inferGraph(nodes: AppNode[], edges: AppEdge[], hp: Hyperparams):
 export function nodeTitle(n: AppNode): string {
   if (n.type === 'part') return n.data.title || nodeRegistry[n.data.partType]?.label || n.data.partType
   if (n.type === 'group') return n.data.title || GROUP_DEFS[n.data.groupType].label
+  if (n.type === 'frame') return n.data.title || 'Frame'
   return n.type
 }
 

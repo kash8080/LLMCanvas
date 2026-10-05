@@ -1,4 +1,4 @@
-import { StickyNote, Type } from 'lucide-react'
+import { Frame, StickyNote, Type } from 'lucide-react'
 import { DND_MIME, type PaletteItemId } from '../canvas/types'
 import { GROUP_DEF_LIST } from '../nodes/groups'
 import { CATEGORY_INFO, CATEGORY_ORDER, NODE_DEFS } from '../nodes/registry'
@@ -62,6 +62,9 @@ export function Palette() {
           </PaletteItem>
           <PaletteItem item="textbox" label="Text box" title="Free text — drag onto the canvas">
             <Type size={14} className="text-slate-500" />
+          </PaletteItem>
+          <PaletteItem item="frame" label="Frame" title="Titled area to label a region — dragging it moves what's inside. Drag onto the canvas (or right-click a selection → Frame selection)">
+            <Frame size={14} className="text-slate-500" />
           </PaletteItem>
         </div>
       </div>

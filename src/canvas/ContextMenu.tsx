@@ -1,8 +1,9 @@
 import { useReactFlow } from '@xyflow/react'
-import { BoxSelect, Copy, Maximize, PanelRight, Plus, Redo2, SquareDashedMousePointer, Trash2, Undo2 } from 'lucide-react'
+import { BoxSelect, Copy, Frame, Maximize, PanelRight, Plus, Redo2, SquareDashedMousePointer, Trash2, Undo2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useCanvasStore } from '../store/useCanvasStore'
 import { nodeTitle } from '../store/inference'
+import { itemsInFrame } from './frames'
 import { ModeToggle } from './nodes/GroupNode'
 import { deleteLabel, isLoneProxy, useDeleteElements } from './useDelete'
 
@@ -52,7 +53,7 @@ function MenuBody({ menu, close }: { menu: ContextMenuState; close: () => void }
   const edges = useCanvasStore((s) => s.edges)
   const canUndo = useCanvasStore((s) => s.history.past.length > 0)
   const canRedo = useCanvasStore((s) => s.history.future.length > 0)
-  const { duplicateSelection, selectNodes, selectOnly, setDrawerOpen, openQuickAdd, undo, redo } = useCanvasStore.getState()
+  const { duplicateSelection, selectNodes, selectOnly, setDrawerOpen, openQuickAdd, frameSelection, undo, redo } = useCanvasStore.getState()
   const deleteElements = useDeleteElements()
   const { fitView } = useReactFlow()
   const run = (fn: () => void) => () => {
@@ -94,6 +95,7 @@ function MenuBody({ menu, close }: { menu: ContextMenuState; close: () => void }
       <>
         <Caption>{`${count} items selected`}</Caption>
         {selNodes.length > 0 && <Item icon={Copy} label={`Duplicate ${selNodes.length} items`} hint="⌘D" onClick={run(duplicateSelection)} />}
+        {selNodes.length > 0 && <Item icon={Frame} label="Frame selection" onClick={run(() => frameSelection())} />}
         <Item
           icon={Trash2}
           label={`Delete ${count} items`}
@@ -119,6 +121,24 @@ function MenuBody({ menu, close }: { menu: ContextMenuState; close: () => void }
     )
   }
 
+  if (node.type === 'frame') {
+    const inside = itemsInFrame(nodes, node.id)
+    return (
+      <>
+        <Caption>{`${nodeTitle(node)} · frame`}</Caption>
+        <Item icon={Plus} label="Add part here…" onClick={run(() => openQuickAdd({ x: menu.x, y: menu.y, from: null }))} />
+        {details}
+        <Item icon={Copy} label="Duplicate frame" hint="⌘D" onClick={run(() => (selectOnly(node.id, false), duplicateSelection()))} />
+        {inside.length > 0 && <Item icon={SquareDashedMousePointer} label={`Select the ${inside.length} items inside`} onClick={run(() => selectNodes(inside))} />}
+        <Divider />
+        <Item icon={Trash2} label={deleteLabel(node, nodes)} hint="⌫" danger onClick={run(() => deleteElements([node.id]))} />
+        {inside.length > 0 && (
+          <Item icon={Trash2} label={`Delete frame + ${inside.length} item${inside.length > 1 ? 's' : ''} inside`} danger onClick={run(() => deleteElements([node.id, ...inside]))} />
+        )}
+      </>
+    )
+  }
+
   return (
     <>
       <Caption>{nodeTitle(node)}</Caption>
@@ -130,6 +150,7 @@ function MenuBody({ menu, close }: { menu: ContextMenuState; close: () => void }
       )}
       {details}
       <Item icon={Copy} label="Duplicate" hint="⌘D" onClick={run(() => (selectOnly(node.id, false), duplicateSelection()))} />
+      <Item icon={Frame} label={node.parentId ? 'Put its top-level group in a frame' : 'Put in a frame'} onClick={run(() => frameSelection([node.id]))} />
       <Divider />
       <Item icon={Trash2} label={deleteLabel(node, nodes)} hint="⌫" danger onClick={run(() => deleteElements([node.id]))} />
     </>

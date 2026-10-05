@@ -2,7 +2,7 @@ import type { XYPosition } from '@xyflow/react'
 import { defaultParams } from '../engine/resolve'
 import { isGroupType } from '../nodes/groups'
 import { getNodeDef } from '../nodes/registry'
-import type { AppNode, PaletteItemId, PartNode } from './types'
+import type { AppNode, FrameNode, PaletteItemId, PartNode } from './types'
 
 let counter = 0
 export function newId(prefix: string): string {
@@ -20,6 +20,7 @@ export const PROXY_HEIGHT = 24
 export function defaultSize(item: PaletteItemId): { width: number; height: number } {
   if (item === 'sticky') return { width: 200, height: 160 }
   if (item === 'textbox') return { width: 240, height: 60 }
+  if (item === 'frame') return { width: 480, height: 320 }
   return { width: PART_WIDTH, height: 64 }
 }
 
@@ -27,6 +28,7 @@ export function isPaletteItemId(value: string): value is PaletteItemId {
   return (
     value === 'sticky' ||
     value === 'textbox' ||
+    value === 'frame' ||
     (value.startsWith('part:') && !!getNodeDef(value.slice(5))) ||
     (value.startsWith('group:') && isGroupType(value.slice(6)))
   )
@@ -58,7 +60,23 @@ export function createNode(item: Exclude<PaletteItemId, `group:${string}`>, posi
       data: { text: '', bgColor: 'transparent', textColor: '#111827', fontSize: 18 },
     }
   }
+  if (item === 'frame') return createFrameNode({ x: position.x, y: position.y, ...defaultSize('frame') })
   return createPartNode(item.slice(5), position)
+}
+
+/** Default frame colours: a soft slate tint with a mid-grey border. */
+export const FRAME_DEFAULT_COLORS = { bgColor: '#f8fafc', borderColor: '#94a3b8' }
+
+/** A user-made frame covering this box (flow coordinates). */
+export function createFrameNode(box: { x: number; y: number; width: number; height: number }, title?: string): FrameNode {
+  return {
+    id: newId('frame'),
+    type: 'frame',
+    position: { x: box.x, y: box.y },
+    width: box.width,
+    height: box.height,
+    data: { ...FRAME_DEFAULT_COLORS, ...(title ? { title } : {}) },
+  }
 }
 
 /**

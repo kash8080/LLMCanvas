@@ -1,5 +1,6 @@
 import type { EdgeTypes, NodeTypes } from '@xyflow/react'
 import { StickyNoteNode, TextBoxNode } from './nodes/AnnotationNode'
+import { FrameNode } from './nodes/FrameNode'
 import { GroupNode } from './nodes/GroupNode'
 import { PartNode } from './nodes/PartNode'
 import { ShapeEdge } from './ShapeEdge'
@@ -10,6 +11,7 @@ export const nodeTypes: NodeTypes = {
   group: GroupNode,
   sticky: StickyNoteNode,
   textbox: TextBoxNode,
+  frame: FrameNode,
 }
 
 /** Every edge (type unset = 'default') renders as a smooth-step edge with a shape label. */

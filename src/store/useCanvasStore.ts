@@ -2,8 +2,9 @@ import { applyEdgeChanges, applyNodeChanges, type Connection, type EdgeChange, t
 import { create } from 'zustand'
 import { connectionToBody, type ConnectionLike } from '../canvas/connect'
 import { instantiateGroup, isGroupItem, nextBlockTitle } from '../canvas/groupTemplates'
-import { createNode, newId } from '../canvas/nodeFactory'
-import type { AnnotationData, AppEdge, AppNode, GroupMode, PaletteItemId } from '../canvas/types'
+import { frameBoxAround, frameFollowChanges, topLevelIds } from '../canvas/frames'
+import { createFrameNode, createNode, newId } from '../canvas/nodeFactory'
+import type { AnnotationData, AppEdge, AppNode, FrameData, GroupMode, PaletteItemId } from '../canvas/types'
 import { cs336Document } from '../defaults/cs336Graph'
 import { isProxyType } from '../engine/groups'
 import type { MemoryHighlightKey, MemoryMode } from '../engine/memory'
@@ -93,8 +94,15 @@ export interface CanvasState {
   /** Add a palette item (a group = its whole template); `position` is relative to `opts.parentId` if given. */
   addNode: (item: PaletteItemId, position: XYPosition, opts?: AddNodeOptions) => void
   updateAnnotation: (id: string, patch: Partial<AnnotationData>) => void
+  /** Frame colours (title: `setTitle`). */
+  updateFrame: (id: string, patch: Partial<Omit<FrameData, 'title'>>) => void
+  /**
+   * Wrap these items (default: the selection) in a new frame sized to their bounds + padding. Items inside
+   * a group count as their top-level group. Selects the new frame; returns its id (null if nothing to frame).
+   */
+  frameSelection: (ids?: string[]) => string | null
   setPartParam: (id: string, key: string, value: ParamValue) => void
-  /** Rename a part or a group ('' = back to the default label). */
+  /** Rename a part, group or frame ('' = back to the default label). */
   setTitle: (id: string, title: string) => void
   setGroupMode: (id: string, mode: GroupMode) => void
   setHyperparam: <K extends keyof Hyperparams>(key: K, value: Hyperparams[K]) => void
@@ -182,10 +190,13 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
       gestureStart = null
     }
   }
+  // Frames drag their contents along (canvas/frames.ts): contents captured at drag start, per frame.
+  const frameDrags = new Map<string, string[]>()
   const restore = (step: ((h: History<GraphSnapshot>, cur: GraphSnapshot) => { history: History<GraphSnapshot>; state: GraphSnapshot } | null)) => {
     const r = step(get().history, snapshot())
     if (!r) return
     gestureStart = null
+    frameDrags.clear()
     set({ history: r.history, portPopover: null, quickAdd: null })
     commit(r.state)
   }
@@ -210,7 +221,9 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
     onNodesChange: (changes) => {
       trackGesture(changes)
       if (changes.some((c) => c.type === 'remove')) rememberRemoval()
-      commit({ nodes: applyNodeChanges(changes, get().nodes) })
+      const nodes = get().nodes
+      const follow = frameFollowChanges(changes, nodes, frameDrags)
+      commit({ nodes: applyNodeChanges(follow.length > 0 ? [...changes, ...follow] : changes, nodes) })
     },
     onEdgesChange: (changes) => {
       if (changes.some((c) => c.type === 'remove')) rememberRemoval()
@@ -236,7 +249,8 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
         nextEdges = [...edgesOff, ...built.edges]
       } else {
         const node = { ...createNode(item, position), selected: true } as AppNode
-        added = [opts.parentId ? ({ ...node, parentId: opts.parentId, extent: 'parent' } as AppNode) : node]
+        // Frames are visual only and always top-level (never inside a semantic group).
+        added = [opts.parentId && node.type !== 'frame' ? ({ ...node, parentId: opts.parentId, extent: 'parent' } as AppNode) : node]
       }
       const nextNodes = [...deselected, ...added]
       if (opts.connectFrom) {
@@ -257,6 +271,26 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
       })
     },
 
+    updateFrame: (id, patch) => {
+      remember(`frame:${id}:${Object.keys(patch).sort().join(',')}`)
+      commit({ nodes: get().nodes.map((n) => (n.id === id && n.type === 'frame' ? { ...n, data: { ...n.data, ...patch } } : n)) })
+    },
+
+    frameSelection: (ids) => {
+      const { nodes, edges } = get()
+      const items = topLevelIds(nodes, ids ?? nodes.filter((n) => n.selected).map((n) => n.id))
+      const box = frameBoxAround(nodes, items)
+      if (!box) return null
+      remember()
+      const frame = { ...createFrameNode(box), selected: true }
+      commit({
+        nodes: [...nodes.map((n) => (n.selected ? { ...n, selected: false } : n)), frame],
+        edges: edges.some((e) => e.selected) ? edges.map((e) => (e.selected ? { ...e, selected: false } : e)) : edges,
+      })
+      set({ drawerOpen: true })
+      return frame.id
+    },
+
     setPartParam: (id, key, value) => {
       // Typing a local value commits on every valid keystroke: one undo step per field edit.
       remember(`param:${id}:${key}:${'bind' in value ? 'bind' : 'value'}`)
@@ -267,7 +301,7 @@ export const useCanvasStore = create<CanvasState>()((set, get) => {
       remember(`title:${id}`)
       commit({
         nodes: get().nodes.map((n) =>
-          n.id === id && (n.type === 'part' || n.type === 'group') ? ({ ...n, data: { ...n.data, title: title || undefined } } as AppNode) : n,
+          n.id === id && (n.type === 'part' || n.type === 'group' || n.type === 'frame') ? ({ ...n, data: { ...n.data, title: title || undefined } } as AppNode) : n,
         ),
       })
     },

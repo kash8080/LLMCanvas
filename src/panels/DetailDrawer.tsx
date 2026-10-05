@@ -4,6 +4,7 @@ import { useDeleteElements } from '../canvas/useDelete'
 import { nodeTitle } from '../store/inference'
 import { useCanvasStore } from '../store/useCanvasStore'
 import { AnnotationDetails } from './drawer/AnnotationDetails'
+import { FrameDetails } from './drawer/FrameDetails'
 import { GroupDetails } from './drawer/GroupDetails'
 import { ModelSummary } from './drawer/ModelSummary'
 import { PartDetails } from './drawer/PartDetails'
@@ -32,6 +33,7 @@ export function DetailDrawer() {
 function NodeDetails({ node }: { node: AppNode }) {
   if (node.type === 'part') return <PartDetails node={node} />
   if (node.type === 'group') return <GroupDetails node={node} />
+  if (node.type === 'frame') return <FrameDetails node={node} />
   return <AnnotationDetails node={node} />
 }
 

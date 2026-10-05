@@ -49,7 +49,8 @@ export function AnnotationDetails({ node }: { node: StickyNode | TextBoxNode }) 
   )
 }
 
-function Swatches({ colors, value, onChange }: { colors: string[]; value: string; onChange: (c: string) => void }) {
+/** Round colour buttons ('transparent' = checkerboard). */
+export function Swatches({ colors, value, onChange }: { colors: string[]; value: string; onChange: (c: string) => void }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {colors.map((c) => (

@@ -114,6 +114,14 @@ Composite parts (**Transformer Block**, **Multi-Head Self-Attention**, **SwiGLU 
 - Quick-add: dropping a connection on empty canvas opens a searchable menu of compatible items (`src/canvas/quickAdd.ts`)
   at the drop point; the new part is created and connected in one undo step. On the empty area of the group the drag
   started in, the part is created inside that group. Also "Add part here…" in the canvas context menu (no connection).
+- User frames (`src/canvas/frames.ts`, node kind `frame`): titled, coloured, resizable rectangles that label a region; no
+  ports, no effect on inference / params / memory, always top-level. **No React Flow parenting**: when a frame is dragged
+  (or nudged with arrow keys), the top-level items whose box is fully inside it at drag start get the same delta in the
+  same change batch (one undo step); resizing never moves contents. So connection rules, `flattenGroups`, persistence
+  order and deletion are untouched (items in a frame connect freely to items outside). Delete = frame only (contents
+  stay); "Delete frame + N items inside" in the context menu / drawer. Frames render below everything (display-only
+  zIndex, bigger frames lower); the title sits above the top-left corner and keeps ~13 px on screen when zoomed out.
+  "Frame selection" (context menu) wraps the selected items' top-level ancestors with 40 px padding.
 
 ### 2.5 Layout of the app
 ```
@@ -282,7 +290,8 @@ Each phase ends with: app runs, tests pass, PROGRESS.md updated.
       (+ × button on a selected edge; no separate floating selection toolbar — the context menu and the drawer's multi-selection header cover it)
 - [x] 7a. Undo/redo (Cmd+Z / Shift+Cmd+Z + toolbar buttons) covering all graph edits
 - [x] 7a. Drop a connection on empty canvas → quick-add menu that creates a part and auto-connects it
-- [ ] 7b. User-made visual frames (Miro-style, no ports): titled, coloured, resizable, moves what's inside
+- [x] 7b. User-made visual frames (Miro-style, no ports): titled, coloured, resizable, moves what's inside
+      (no parenting: a drag carries the top-level items fully inside the frame — see §2.4; duplicate copies the frame only)
 - [ ] 7c. Extra part variants: LayerNorm, GELU, ReLU, non-gated FFN (CS336 `SiLU.py`) + docs; weight-tying toggle (lm_head shares embedding)
 - [ ] 7d. KV-cache estimate for generation (memory)
 

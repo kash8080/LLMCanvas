@@ -17,8 +17,9 @@ export function isLoneProxy(node: AppNode): boolean {
   return node.type === 'part' && isProxyType(node.data.partType)
 }
 
-/** "Delete", "Delete group (12 parts)". */
+/** "Delete", "Delete group (12 parts)", "Delete frame only" (what's inside stays). */
 export function deleteLabel(node: AppNode, nodes: AppNode[]): string {
+  if (node.type === 'frame') return 'Delete frame only'
   if (node.type !== 'group') return 'Delete'
   const inside = new Set([node.id])
   for (const n of nodes) if (n.parentId && inside.has(n.parentId)) inside.add(n.id)

@@ -5,8 +5,9 @@ import type { GroupType } from '../nodes/groups'
 /**
  * All React Flow node kinds the canvas knows about. Every model part uses the generic 'part' kind;
  * Transformer Block / MHA / SwiGLU frames use 'group' (children point at it via `parentId`).
+ * 'frame' = a user-made visual frame (Miro-style): no ports, no parenting (src/canvas/frames.ts).
  */
-export const NODE_KINDS = ['part', 'group', 'sticky', 'textbox'] as const
+export const NODE_KINDS = ['part', 'group', 'sticky', 'textbox', 'frame'] as const
 export type NodeKind = (typeof NODE_KINDS)[number]
 
 export function isNodeKind(value: unknown): value is NodeKind {
@@ -41,15 +42,27 @@ export type GroupData = {
   mode: GroupMode
 }
 
+/**
+ * Data for a user-made frame: a titled, coloured rectangle that labels a region. It has no ports and
+ * no parent/child link — dragging it moves the top-level items fully inside it (src/canvas/frames.ts).
+ */
+export type FrameData = {
+  /** Falls back to "Frame". */
+  title?: string
+  bgColor: string
+  borderColor: string
+}
+
 export type PartNode = Node<PartData, 'part'>
 export type GroupNode = Node<GroupData, 'group'>
 export type StickyNode = Node<AnnotationData, 'sticky'>
 export type TextBoxNode = Node<AnnotationData, 'textbox'>
-export type AppNode = PartNode | GroupNode | StickyNode | TextBoxNode
+export type FrameNode = Node<FrameData, 'frame'>
+export type AppNode = PartNode | GroupNode | StickyNode | TextBoxNode | FrameNode
 export type AppEdge = Edge
 
 /** MIME type used when dragging a palette item onto the canvas. */
 export const DND_MIME = 'application/x-llm-canvas-node'
 
-/** Palette drag payload: an annotation kind, `part:<partType>` or `group:<groupType>`. */
-export type PaletteItemId = 'sticky' | 'textbox' | `part:${string}` | `group:${GroupType}`
+/** Palette drag payload: an annotation kind (incl. 'frame'), `part:<partType>` or `group:<groupType>`. */
+export type PaletteItemId = 'sticky' | 'textbox' | 'frame' | `part:${string}` | `group:${GroupType}`

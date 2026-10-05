@@ -20,7 +20,8 @@ export interface QuickAddItem {
 /**
  * Items that can be created at the drop point. Dragged from an output → things with an input;
  * from an input → things with an output (groups have both). Inside a group frame only plain parts
- * (group templates are too big to nest there). Annotations only when nothing gets connected.
+ * (group templates are too big to nest there). Annotations only when nothing gets connected (frames never
+ * inside a group).
  */
 export function quickAddItems(from: DragFrom | null, insideGroup = false): QuickAddItem[] {
   const parts = NODE_DEFS.filter((d) => (from === 'source' ? d.inputs.length > 0 : from === 'target' ? d.outputs.length > 0 : true)).map(
@@ -32,6 +33,7 @@ export function quickAddItems(from: DragFrom | null, insideGroup = false): Quick
       ? [
           { item: 'sticky', label: 'Sticky note', group: 'Annotation', color: '#fde047' },
           { item: 'textbox', label: 'Text box', group: 'Annotation', color: '#cbd5e1' },
+          ...(insideGroup ? [] : [{ item: 'frame', label: 'Frame', group: 'Annotation', color: '#94a3b8' } satisfies QuickAddItem]),
         ]
       : []
   return [...parts, ...groups, ...notes]

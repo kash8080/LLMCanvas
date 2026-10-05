@@ -20,6 +20,7 @@ import { CATEGORY_INFO, getNodeDef, highlightInfo } from '../nodes/registry'
 import { selectMemory, useCanvasStore, withoutLoneProxies, type CanvasState } from '../store/useCanvasStore'
 import { connectionProblem, connectionToBody } from './connect'
 import { ContextMenu, type ContextMenuState } from './ContextMenu'
+import { withFrameLayers } from './frames'
 import { paletteItemSize } from './groupTemplates'
 import { applyLod, hideEdgesOfHiddenNodes, lodSelector } from './lod'
 import { isPaletteItemId, topNodes } from './nodeFactory'
@@ -62,7 +63,8 @@ const onConnectEnd: OnConnectEnd = (event, state) => {
   const targetId = nodeEl?.getAttribute('data-id') ?? state.toNode?.id
   const fromParent = nodes.find((n) => n.id === from.nodeId)?.parentId
   const at = { x: point.clientX, y: point.clientY }
-  if (!targetId) {
+  // A user frame is only a backdrop: letting go on it counts as empty canvas.
+  if (!targetId || nodes.find((n) => n.id === targetId)?.type === 'frame') {
     // Empty canvas. A part inside a group can only connect inside it, so the new part can't go out here.
     if (fromParent) showHint('Parts inside a group only connect to each other — let go inside the group to add a part there.')
     else openQuickAdd({ ...at, from })
@@ -99,7 +101,8 @@ export function Canvas() {
   // Semantic zoom: hide the insides of collapsed groups. `lod` only changes when the zoom crosses
   // a threshold, so this doesn't recompute on every zoom step.
   const lod = useStore(lodSelector)
-  const visibleNodes = useMemo(() => applyLod(nodes, lod), [nodes, lod])
+  // User frames go below everything (display-only zIndex, canvas/frames.ts).
+  const visibleNodes = useMemo(() => withFrameLayers(applyLod(nodes, lod)), [nodes, lod])
   const visibleEdges = useMemo(() => hideEdgesOfHiddenNodes(edges, visibleNodes), [edges, visibleNodes])
 
   // Cmd/Ctrl+D duplicates the selection (window listener so it also overrides the browser bookmark shortcut).
@@ -252,6 +255,8 @@ function HighlightChip() {
 function minimapColor(node: AppNode): string {
   if (node.type === 'sticky') return node.data.bgColor
   if (node.type === 'textbox') return '#e2e8f0'
+  // Translucent: the minimap draws frames in array order, often on top of what they contain.
+  if (node.type === 'frame') return `${node.data.borderColor}26`
   if (node.type === 'group') return `${GROUP_DEFS[node.data.groupType].color}33`
   const def = getNodeDef(node.data.partType)
   return def ? CATEGORY_INFO[def.category].color : '#c7d2fe'
